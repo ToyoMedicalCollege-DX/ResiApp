@@ -76,10 +76,10 @@ export default function CheckPage() {
   const trendColor = DELTA > 0 ? "#27AE76" : DELTA < 0 ? "#EF4444" : "#94A3B8";
   const trendText =
     DELTA > 0
-      ? `先週より +${DELTA} ポイント`
+      ? `先月より +${DELTA} ポイント`
       : DELTA < 0
-        ? `先週より ${DELTA} ポイント`
-        : "先週と同じスコア";
+        ? `先月より ${DELTA} ポイント`
+        : "先月と同じスコア";
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-bg">
@@ -89,29 +89,29 @@ export default function CheckPage() {
         <div className="flex flex-col gap-6 px-5 pt-2 pb-6">
           <h1 className="text-2xl font-bold text-t1">セルフチェック ✓</h1>
 
-          {/* 今週の総合スコア */}
-          <div className="bg-card rounded-3xl overflow-hidden shadow-sm">
-            <div className="bg-accent px-5 py-3">
-              <span className="text-[13px] font-semibold text-white/90">
-                今週の総合スコア
+          {/* 今月の総合スコア */}
+          <div className="bg-card rounded-2xl overflow-hidden shadow-sm">
+            <div className="bg-accent px-4 py-2">
+              <span className="text-[12px] font-semibold text-white/90">
+                今月の総合スコア
               </span>
             </div>
-            <div className="px-5 py-5 flex flex-col gap-4">
-              <div className="flex items-end justify-between gap-4">
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-[56px] font-bold text-accent leading-none tracking-tight">
+            <div className="px-4 py-3.5 flex flex-col gap-2.5">
+              <div className="flex items-end justify-between gap-3">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-[36px] font-bold text-accent leading-none tracking-tight">
                     {LATEST.total}
                   </span>
-                  <span className="text-[16px] font-semibold text-t3 pb-1.5">
+                  <span className="text-[13px] font-semibold text-t3 pb-0.5">
                     / 100
                   </span>
                 </div>
                 <div
-                  className="px-4 py-2 rounded-full mb-1"
+                  className="px-2.5 py-1 rounded-full mb-0.5"
                   style={{ backgroundColor: level.bg }}
                 >
                   <span
-                    className="text-[16px] font-bold"
+                    className="text-[12px] font-bold"
                     style={{ color: level.color }}
                   >
                     {level.label}
@@ -119,7 +119,7 @@ export default function CheckPage() {
                 </div>
               </div>
 
-              <div className="h-3 rounded-full bg-stroke overflow-hidden">
+              <div className="h-2 rounded-full bg-stroke overflow-hidden">
                 <div
                   className="h-full rounded-full bg-accent transition-all"
                   style={{ width: `${LATEST.total}%` }}
@@ -127,12 +127,12 @@ export default function CheckPage() {
               </div>
 
               <div
-                className="flex items-center gap-2 rounded-2xl px-3 py-2.5"
+                className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5"
                 style={{ backgroundColor: `${trendColor}14` }}
               >
-                <TrendIcon size={16} color={trendColor} />
+                <TrendIcon size={14} color={trendColor} />
                 <span
-                  className="text-[13px] font-semibold"
+                  className="text-[12px] font-semibold"
                   style={{ color: trendColor }}
                 >
                   {trendText}

@@ -17,33 +17,19 @@ function SkillCard({ skill }: { skill: Skill }) {
 
   return (
     <Link href={`/training/${skill.id}`} className="block">
-      <div className="bg-card rounded-3xl shadow-sm overflow-hidden">
-        <div className="flex items-center gap-[14px] px-4 py-4">
+      <div className="bg-card rounded-2xl shadow-sm overflow-hidden">
+        <div className="flex items-center gap-3 px-3.5 py-2.5">
           <div
-            className="w-[52px] h-[52px] rounded-[18px] flex items-center justify-center flex-shrink-0"
+            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
             style={{ backgroundColor: `${skill.color}22` }}
           >
-            <Icon size={26} color={skill.color} />
+            <Icon size={20} color={skill.color} />
           </div>
-          <div className="flex flex-col gap-1 flex-1 min-w-0">
-            <span className="text-[16px] font-bold text-t1">{skill.name}</span>
-            <span className="text-[12px] text-t3 truncate">{skill.description}</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-[10px] px-4 pb-[14px]">
-          <div
-            className="flex-1 h-[7px] rounded-full overflow-hidden"
-            style={{ backgroundColor: `${skill.color}22` }}
-          >
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: `${progressRatio * 100}%`,
-                minWidth: skill.completedLessons > 0 ? 4 : 0,
-                backgroundColor: skill.color,
-              }}
-            />
+          <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+            <span className="text-[14px] font-bold text-t1 leading-tight">
+              {skill.name}
+            </span>
+            <span className="text-[11px] text-t3 truncate">{skill.description}</span>
           </div>
           <span
             className="text-[11px] font-semibold flex-shrink-0"
@@ -51,6 +37,22 @@ function SkillCard({ skill }: { skill: Skill }) {
           >
             {skill.completedLessons}/{skill.totalLessons}
           </span>
+        </div>
+
+        <div className="px-3.5 pb-2.5">
+          <div
+            className="h-1.5 rounded-full overflow-hidden"
+            style={{ backgroundColor: `${skill.color}22` }}
+          >
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${progressRatio * 100}%`,
+                minWidth: skill.completedLessons > 0 ? 3 : 0,
+                backgroundColor: skill.color,
+              }}
+            />
+          </div>
         </div>
       </div>
     </Link>
@@ -67,7 +69,7 @@ export default function TrainingPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="flex flex-col gap-3 px-4 py-4">
+        <div className="flex flex-col gap-2 px-4 py-3">
           {SKILLS.map((skill) => (
             <SkillCard key={skill.id} skill={skill} />
           ))}

@@ -10,12 +10,9 @@ const FEATURES = [
 export default function WelcomePage() {
   return (
     <div className="h-full flex flex-col bg-accent overflow-hidden">
-      {/* Status Bar */}
       <div className="flex-shrink-0 h-[52px]" />
 
-      {/* Main Content — scrolls if needed */}
       <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center px-8 gap-7 py-8">
-        {/* Illustration */}
         <div className="w-48 h-48 flex-shrink-0">
           <Image
             src="/pict.png"
@@ -27,7 +24,6 @@ export default function WelcomePage() {
           />
         </div>
 
-        {/* App Name & Tagline */}
         <div className="flex flex-col items-center gap-2 text-center">
           <h1 className="text-[32px] font-bold text-white">ResiApp</h1>
           <p className="text-[16px] text-white/80">
@@ -35,7 +31,6 @@ export default function WelcomePage() {
           </p>
         </div>
 
-        {/* Feature List */}
         <div className="flex flex-col gap-3 w-full">
           {FEATURES.map((f) => (
             <div key={f} className="flex items-center gap-[10px]">
@@ -45,13 +40,20 @@ export default function WelcomePage() {
           ))}
         </div>
 
-        {/* CTA Button */}
-        <Link
-          href="/home"
-          className="w-full h-[52px] rounded-[26px] bg-white flex items-center justify-center"
-        >
-          <span className="text-[16px] font-bold text-accent">はじめる</span>
-        </Link>
+        <div className="w-full flex flex-col gap-3">
+          <Link
+            href="/signup"
+            className="w-full h-[52px] rounded-[26px] bg-white flex items-center justify-center"
+          >
+            <span className="text-[16px] font-bold text-accent">はじめる</span>
+          </Link>
+          <Link
+            href="/login"
+            className="w-full h-[48px] rounded-[24px] border-2 border-white/70 flex items-center justify-center"
+          >
+            <span className="text-[15px] font-bold text-white">ログイン</span>
+          </Link>
+        </div>
       </div>
     </div>
   );

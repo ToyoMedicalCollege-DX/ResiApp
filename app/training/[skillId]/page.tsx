@@ -8,19 +8,23 @@ import { SKILLS, LESSONS_BY_SKILL } from "@/lib/mock-data";
 import type { Lesson } from "@/lib/types";
 
 const TYPE_CONFIG = {
-  learn:  { icon: BookOpen,  label: "学習",     color: "#E8895B" },
-  work:   { icon: PenLine,   label: "ワーク",   color: "#818CF8" },
-  review: { icon: RotateCcw, label: "振り返り", color: "#FB923C" },
+  learn:  { icon: BookOpen,  label: "学習" },
+  work:   { icon: PenLine,   label: "ワーク" },
+  review: { icon: RotateCcw, label: "振り返り" },
 };
 
 function LessonRow({
   lesson,
   index,
   isUnlocked,
+  themeColor,
+  themeBg,
 }: {
   lesson: Lesson;
   index: number;
   isUnlocked: boolean;
+  themeColor: string;
+  themeBg: string;
 }) {
   const config = TYPE_CONFIG[lesson.type];
   const TypeIcon = config.icon;
@@ -35,14 +39,22 @@ function LessonRow({
         className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-[13px]"
         style={{
           backgroundColor: lesson.completed
-            ? "#E8895B"
+            ? themeColor
             : isUnlocked
-            ? "#FFE8D6"
-            : "#F5EDE4",
-          color: lesson.completed ? "#FFF" : isUnlocked ? "#E8895B" : "#A89080",
+              ? themeBg
+              : "#F5EDE4",
+          color: lesson.completed
+            ? "#FFF"
+            : isUnlocked
+              ? themeColor
+              : "#A89080",
         }}
       >
-        {lesson.completed ? <CheckCircle size={16} color="#FFF" /> : index + 1}
+        {lesson.completed ? (
+          <CheckCircle size={16} color="#FFF" />
+        ) : (
+          index + 1
+        )}
       </div>
 
       <div className="flex-1 min-w-0">
@@ -54,8 +66,11 @@ function LessonRow({
           {lesson.title}
         </p>
         <div className="flex items-center gap-1 mt-0.5">
-          <TypeIcon size={11} color={config.color} />
-          <span className="text-[11px]" style={{ color: config.color }}>
+          <TypeIcon size={11} color={isUnlocked ? themeColor : "#A89080"} />
+          <span
+            className="text-[11px]"
+            style={{ color: isUnlocked ? themeColor : "#A89080" }}
+          >
             {config.label}
           </span>
           <span className="text-[11px] text-t3 ml-1">{lesson.duration}分</span>
@@ -95,27 +110,34 @@ export default function SkillPage({
     <div className="h-full flex flex-col overflow-hidden bg-bg">
       {/* Header */}
       <div
-        className="flex-shrink-0 flex items-center gap-3 px-4 py-4"
+        className="flex-shrink-0 flex flex-col"
         style={{ backgroundColor: skill.color }}
       >
-        <Link href="/training">
-          <ChevronLeft size={24} color="#FFF" />
-        </Link>
-        <div className="flex flex-col flex-1 min-w-0">
-          <span className="text-[11px] text-white/70">{skill.shortName}</span>
-          <span className="text-[20px] font-bold text-white truncate">{skill.name}</span>
+        <div className="flex items-end gap-3 px-4 pt-4 pb-3">
+          <Link
+            href="/training"
+            className="flex items-center justify-center w-8 h-8 -ml-1 mb-0.5"
+            aria-label="戻る"
+          >
+            <ChevronLeft size={24} color="#FFF" />
+          </Link>
+          <div className="flex flex-col flex-1 min-w-0">
+            <span className="text-[11px] text-white/70">{skill.shortName}</span>
+            <span className="text-[20px] font-bold text-white truncate leading-tight">
+              {skill.name}
+            </span>
+          </div>
+          <span className="text-[12px] text-white/80 flex-shrink-0 pb-0.5">
+            {skill.completedLessons}/{skill.totalLessons}
+          </span>
         </div>
-        <span className="text-[12px] text-white/80 flex-shrink-0">
-          {skill.completedLessons}/{skill.totalLessons}
-        </span>
-      </div>
-
-      {/* Progress Bar */}
-      <div className="flex-shrink-0 h-1.5 bg-stroke">
-        <div
-          className="h-full"
-          style={{ width: `${progressRatio * 100}%`, backgroundColor: skill.color }}
-        />
+        {/* 下端は全幅で揃え、進捗は白のオーバーレイで表現 */}
+        <div className="h-1.5 w-full bg-black/15">
+          <div
+            className="h-full bg-white/70"
+            style={{ width: `${progressRatio * 100}%` }}
+          />
+        </div>
       </div>
 
       {/* Lesson List — scrollable */}
@@ -133,6 +155,8 @@ export default function SkillPage({
                   lesson={lesson}
                   index={i}
                   isUnlocked={isUnlocked}
+                  themeColor={skill.color}
+                  themeBg={skill.bgColor}
                 />
               );
             })

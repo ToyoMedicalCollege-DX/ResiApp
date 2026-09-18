@@ -66,9 +66,7 @@ function CheckQuestionContent() {
         </div>
         <h2 className="text-[24px] font-bold text-t1">チェック完了！</h2>
         <div className="bg-card rounded-3xl p-6 w-full flex flex-col items-center gap-3 shadow-sm">
-          <span className="text-[13px] text-t3">
-            {check.shortName} スコア
-          </span>
+          <span className="text-[13px] text-t3">スコア</span>
           <span
             className="text-[48px] font-bold leading-none"
             style={{ color: level.color }}
@@ -151,7 +149,7 @@ function CheckQuestionContent() {
           <ChevronLeft size={24} className="text-t1" />
         </Link>
         <span className="text-[13px] sm:text-[14px] font-semibold text-t1 truncate">
-          {check.shortName} {check.name}
+          {check.name}
         </span>
         <span className="ml-auto text-[11px] sm:text-[12px] text-t3 flex-shrink-0">
           {current + 1} / {total}

@@ -1,8 +1,10 @@
 "use client";
 
-import Image from "next/image";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Settings } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { displayNameFromUser } from "@/lib/auth-display";
 import { USER } from "@/lib/mock-data";
 
 interface AppHeaderProps {
@@ -23,16 +25,32 @@ function greeting() {
 }
 
 export default function AppHeader({ showBadge = false }: AppHeaderProps) {
+  const [displayName, setDisplayName] = useState(USER.nickname);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) setDisplayName(displayNameFromUser(data.user));
+    });
+  }, []);
+
   return (
     <div className="flex-shrink-0 flex items-center justify-between px-5 pt-4 pb-2 bg-bg">
       <div className="flex items-center gap-3">
         <div className="w-11 h-11 rounded-full overflow-hidden bg-accent-lt flex items-center justify-center flex-shrink-0">
-          <Image src="/icon.png" alt="icon" width={44} height={44} className="object-cover" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/icon-192.png?v=2"
+            alt="ResiApp"
+            width={44}
+            height={44}
+            className="w-full h-full object-cover"
+          />
         </div>
         <div className="flex flex-col gap-0">
           <span className="text-[12px] text-t3">{todayLabel()}</span>
-          <span className="text-[19px] font-bold text-t1 leading-tight">
-            {greeting()}、{USER.nickname}！
+          <span className="text-[16px] font-bold text-t1 leading-tight">
+            {greeting()}、{displayName}！
           </span>
         </div>
       </div>

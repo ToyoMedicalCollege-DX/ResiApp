@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import {
   ChevronLeft,
   Heart,
@@ -45,12 +44,13 @@ export default function AboutPage() {
           {/* ブランド */}
           <div className="bg-card rounded-3xl p-6 shadow-sm flex flex-col items-center gap-3 text-center">
             <div className="w-16 h-16 rounded-full overflow-hidden bg-accent-lt flex items-center justify-center">
-              <Image
-                src="/icon.png"
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/icon-192.png?v=2"
                 alt="ResiApp"
                 width={64}
                 height={64}
-                className="object-cover"
+                className="w-full h-full object-cover"
               />
             </div>
             <div>

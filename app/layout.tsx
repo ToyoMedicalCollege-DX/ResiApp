@@ -6,14 +6,17 @@ export const metadata: Metadata = {
   description: "こころのしなやかさを、毎日少しずつ。",
   manifest: "/manifest.json",
   icons: {
-    apple: "/icon.png",
-    icon: "/icon.png",
+    icon: [
+      { url: "/favicon-32.png?v=2", type: "image/png", sizes: "32x32" },
+      { url: "/icon-192.png?v=2", type: "image/png", sizes: "192x192" },
+    ],
+    apple: [{ url: "/icon-192.png?v=2", type: "image/png", sizes: "192x192" }],
+    shortcut: "/favicon-32.png?v=2",
   },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "ResiApp",
-    startupImage: "/icon.png",
   },
 };
 

@@ -9,28 +9,37 @@ import {
   Phone,
   LogOut,
   Info,
-  School,
   BookOpen,
   MapPin,
-  CloudSun,
+  LocateFixed,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { USER } from "@/lib/mock-data";
+import { createClient } from "@/lib/supabase/client";
+import {
+  departmentFromUser,
+  displayNameFromUser,
+  initialFromUser,
+  studentIdFromUser,
+} from "@/lib/auth-display";
 import {
   WEATHER_REGIONS,
   loadWeatherPrefs,
+  nearestWeatherRegion,
   saveWeatherPrefs,
   type WeatherPrefs,
 } from "@/lib/weather";
+import { DEPARTMENTS, isDepartment } from "@/lib/departments";
 
 const PROFILE_KEY = "resiapp.settings.profile";
 
 type ProfileDraft = {
-  school: string;
+  name: string;
   department: string;
 };
 
 const DEFAULT_PROFILE: ProfileDraft = {
-  school: "",
+  name: "",
   department: "",
 };
 
@@ -91,15 +100,22 @@ const CONSULTATION = [
   },
 ];
 
+function stripSan(name: string): string {
+  return name.replace(/さん$/, "").trim();
+}
+
 function loadProfile(): ProfileDraft {
   if (typeof window === "undefined") return DEFAULT_PROFILE;
   try {
     const raw = localStorage.getItem(PROFILE_KEY);
     if (!raw) return DEFAULT_PROFILE;
-    const parsed = JSON.parse(raw) as ProfileDraft;
+    const parsed = JSON.parse(raw) as Partial<ProfileDraft> & {
+      school?: string;
+    };
     return {
-      school: typeof parsed.school === "string" ? parsed.school : "",
-      department: typeof parsed.department === "string" ? parsed.department : "",
+      name: typeof parsed.name === "string" ? parsed.name : "",
+      department:
+        typeof parsed.department === "string" ? parsed.department : "",
     };
   } catch {
     return DEFAULT_PROFILE;
@@ -107,21 +123,45 @@ function loadProfile(): ProfileDraft {
 }
 
 export default function SettingsPage() {
-  const [school, setSchool] = useState("");
+  const router = useRouter();
+  const [nameInput, setNameInput] = useState("");
   const [department, setDepartment] = useState("");
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [weatherPrefs, setWeatherPrefs] = useState<WeatherPrefs>({
     regionKey: "osaka",
-    enabled: true,
   });
   const [weatherSaved, setWeatherSaved] = useState(false);
-  const initial = USER.nickname.replace(/さん$/, "").slice(0, 1) || "？";
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsMessage, setGpsMessage] = useState("");
+  const [displayName, setDisplayName] = useState(USER.nickname);
+  const [initial, setInitial] = useState(
+    USER.nickname.replace(/さん$/, "").slice(0, 1) || "？"
+  );
+  const [studentIdLabel, setStudentIdLabel] = useState("");
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     const profile = loadProfile();
-    setSchool(profile.school);
     setDepartment(profile.department);
     setWeatherPrefs(loadWeatherPrefs());
+
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data.user) {
+        if (profile.name) setNameInput(stripSan(profile.name));
+        return;
+      }
+      const shown = displayNameFromUser(data.user);
+      setDisplayName(shown);
+      setInitial(initialFromUser(data.user));
+      setStudentIdLabel(studentIdFromUser(data.user));
+      setNameInput(stripSan(shown));
+      const dept = departmentFromUser(data.user);
+      if (dept) setDepartment(dept);
+      else if (profile.department) setDepartment(profile.department);
+    });
   }, []);
 
   useEffect(() => {
@@ -134,14 +174,73 @@ export default function SettingsPage() {
     }, 50);
   }, []);
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
+    const trimmedName = nameInput.trim();
+    const trimmedDept = department.trim();
+    if (!trimmedName) {
+      setSaveError("名前を入力してください");
+      return;
+    }
+    if (!isDepartment(trimmedDept)) {
+      setSaveError("所属学科を選択してください");
+      return;
+    }
+
+    setSaving(true);
+    setSaveError("");
     const next: ProfileDraft = {
-      school: school.trim(),
-      department: department.trim(),
+      name: trimmedName,
+      department: trimmedDept,
     };
     localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 1800);
+
+    try {
+      const supabase = createClient();
+      const { data: userData, error: userError } =
+        await supabase.auth.getUser();
+      if (userError) throw userError;
+      const user = userData.user;
+      if (user) {
+        const { error: metaError } = await supabase.auth.updateUser({
+          data: { name: trimmedName, department: trimmedDept },
+        });
+        if (metaError) throw metaError;
+
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .update({ name: trimmedName, department: trimmedDept })
+          .eq("id", user.id);
+        // profiles 未作成環境でもメタデータ更新は成功させる
+        if (profileError && profileError.code !== "PGRST116") {
+          console.warn("profiles update:", profileError.message);
+        }
+
+        const { data: refreshed } = await supabase.auth.getUser();
+        if (refreshed.user) {
+          setDisplayName(displayNameFromUser(refreshed.user));
+          setInitial(initialFromUser(refreshed.user));
+        } else {
+          setDisplayName(
+            trimmedName.endsWith("さん") ? trimmedName : `${trimmedName}さん`
+          );
+          setInitial(trimmedName.slice(0, 1) || "？");
+        }
+      } else {
+        setDisplayName(
+          trimmedName.endsWith("さん") ? trimmedName : `${trimmedName}さん`
+        );
+        setInitial(trimmedName.slice(0, 1) || "？");
+      }
+
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 1800);
+    } catch (e) {
+      setSaveError(
+        e instanceof Error ? e.message : "保存に失敗しました。もう一度お試しください"
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   const persistWeather = (next: WeatherPrefs) => {
@@ -149,6 +248,45 @@ export default function SettingsPage() {
     saveWeatherPrefs(next);
     setWeatherSaved(true);
     window.setTimeout(() => setWeatherSaved(false), 1600);
+  };
+
+  const handleUseGps = () => {
+    if (gpsLoading) return;
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setGpsMessage("この端末では位置情報が使えません");
+      return;
+    }
+    setGpsLoading(true);
+    setGpsMessage("");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const nearest = nearestWeatherRegion(
+          pos.coords.latitude,
+          pos.coords.longitude
+        );
+        persistWeather({ regionKey: nearest.key });
+        setGpsMessage(`現在地に近い「${nearest.label}」を選びました`);
+        setGpsLoading(false);
+      },
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) {
+          setGpsMessage("位置情報の許可が必要です。端末の設定を確認してください");
+        } else {
+          setGpsMessage("現在地を取得できませんでした");
+        }
+        setGpsLoading(false);
+      },
+      { enableHighAccuracy: false, timeout: 12000, maximumAge: 60_000 }
+    );
+  };
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.replace("/login");
+    router.refresh();
   };
 
   return (
@@ -166,15 +304,18 @@ export default function SettingsPage() {
             <h2 className="text-[12px] font-bold text-t3 px-1">アカウント</h2>
             <div className="bg-card rounded-3xl p-5 flex items-center gap-4 shadow-sm">
               <div className="w-14 h-14 rounded-full bg-accent-lt flex items-center justify-center flex-shrink-0">
-                <span className="text-[22px] font-bold text-accent">{initial}</span>
+                <span className="text-[22px] font-bold text-accent">
+                  {initial}
+                </span>
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[16px] font-bold text-t1 truncate">
-                  {USER.nickname}
+                  {displayName}
                 </p>
-                <p className="text-[12px] text-t3 mt-0.5">
-                  {[school, department].filter(Boolean).join(" · ") ||
-                    "所属未登録"}
+                <p className="text-[12px] text-t3 mt-0.5 truncate">
+                  {[studentIdLabel && `学籍番号 ${studentIdLabel}`, department]
+                    .filter(Boolean)
+                    .join(" · ") || "プロフィール未登録"}
                 </p>
               </div>
               <User size={18} className="text-t3 flex-shrink-0" />
@@ -182,97 +323,70 @@ export default function SettingsPage() {
           </section>
 
           <section className="flex flex-col gap-2">
-            <h2 className="text-[12px] font-bold text-t3 px-1">所属の登録</h2>
+            <h2 className="text-[12px] font-bold text-t3 px-1">プロフィール</h2>
             <div className="bg-card rounded-3xl p-4 shadow-sm flex flex-col gap-4">
               <label className="flex flex-col gap-1.5">
                 <span className="text-[12px] font-semibold text-t2 flex items-center gap-1.5">
-                  <School size={14} className="text-accent" />
-                  所属学校
+                  <User size={14} className="text-accent" />
+                  名前
                 </span>
                 <input
                   type="text"
-                  value={school}
-                  onChange={(e) => setSchool(e.target.value)}
-                  placeholder="例：○○専門学校"
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value)}
+                  placeholder="例：山田 太郎"
+                  maxLength={40}
                   className="h-12 rounded-2xl border-2 border-stroke bg-bg px-4 text-[15px] font-medium text-t1 placeholder:text-t3 focus:outline-none focus:border-accent"
                 />
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[12px] font-semibold text-t2 flex items-center gap-1.5">
                   <BookOpen size={14} className="text-accent" />
-                  学科
+                  所属学科
                 </span>
-                <input
-                  type="text"
-                  value={department}
+                <select
+                  value={isDepartment(department) ? department : ""}
                   onChange={(e) => setDepartment(e.target.value)}
-                  placeholder="例：看護学科"
-                  className="h-12 rounded-2xl border-2 border-stroke bg-bg px-4 text-[15px] font-medium text-t1 placeholder:text-t3 focus:outline-none focus:border-accent"
-                />
+                  className="h-12 rounded-2xl border-2 border-stroke bg-bg px-4 text-[15px] font-medium text-t1 focus:outline-none focus:border-accent"
+                >
+                  <option value="" disabled>
+                    選択してください
+                  </option>
+                  {DEPARTMENTS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
               </label>
+              {saveError && (
+                <p className="text-[12px] font-semibold text-red-600">
+                  {saveError}
+                </p>
+              )}
               <button
                 type="button"
                 onClick={handleSaveProfile}
-                className="h-12 rounded-[24px] bg-accent text-white text-[15px] font-bold"
+                disabled={saving}
+                className="h-12 rounded-[24px] bg-accent text-white text-[15px] font-bold disabled:opacity-50"
               >
-                {saved ? "保存しました" : "所属を保存"}
+                {saved ? "保存しました" : saving ? "保存中…" : "プロフィールを保存"}
               </button>
             </div>
           </section>
 
           <section className="flex flex-col gap-2">
-            <h2 className="text-[12px] font-bold text-t3 px-1">天気・気圧</h2>
+            <h2 className="text-[12px] font-bold text-t3 px-1">体調天気予報</h2>
             <div className="bg-card rounded-3xl p-4 shadow-sm flex flex-col gap-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-accent-lt flex items-center justify-center flex-shrink-0">
-                    <CloudSun size={18} className="text-accent" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[14px] font-semibold text-t1">
-                      ホームに天気を表示
-                    </p>
-                    <p className="text-[11px] text-t3 mt-0.5">
-                      診断ではなく環境の目安です
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={weatherPrefs.enabled}
-                  onClick={() =>
-                    persistWeather({
-                      ...weatherPrefs,
-                      enabled: !weatherPrefs.enabled,
-                    })
-                  }
-                  className="w-12 h-7 rounded-full transition-colors flex-shrink-0 relative"
-                  style={{
-                    backgroundColor: weatherPrefs.enabled
-                      ? "#E8895B"
-                      : "#F0E4D8",
-                  }}
-                >
-                  <span
-                    className="absolute top-0.5 w-6 h-6 rounded-full bg-white shadow transition-all"
-                    style={{
-                      left: weatherPrefs.enabled ? 22 : 2,
-                    }}
-                  />
-                </button>
-              </div>
-
               <label className="flex flex-col gap-1.5">
                 <span className="text-[12px] font-semibold text-t2 flex items-center gap-1.5">
                   <MapPin size={14} className="text-accent" />
-                  表示地域
+                  地域を選ぶ
                 </span>
                 <select
                   value={weatherPrefs.regionKey}
                   onChange={(e) =>
                     persistWeather({
-                      ...weatherPrefs,
                       regionKey: e.target.value,
                     })
                   }
@@ -286,9 +400,19 @@ export default function SettingsPage() {
                 </select>
               </label>
 
-              {weatherSaved && (
+              <button
+                type="button"
+                onClick={handleUseGps}
+                disabled={gpsLoading}
+                className="h-11 rounded-2xl border-2 border-stroke bg-bg text-[13px] font-bold text-t1 flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <LocateFixed size={16} className="text-accent" />
+                {gpsLoading ? "現在地を取得中…" : "GPSで近い地域を選ぶ"}
+              </button>
+
+              {(gpsMessage || weatherSaved) && (
                 <p className="text-[12px] font-semibold text-accent">
-                  天気設定を保存しました
+                  {gpsMessage || "天気設定を保存しました"}
                 </p>
               )}
             </div>
@@ -399,11 +523,13 @@ export default function SettingsPage() {
 
           <button
             type="button"
-            className="w-full flex items-center justify-center gap-2 bg-card rounded-2xl px-4 py-4 shadow-sm"
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className="w-full flex items-center justify-center gap-2 bg-card rounded-2xl px-4 py-4 shadow-sm disabled:opacity-50"
           >
             <LogOut size={18} color="#E8895B" />
             <span className="text-[14px] font-semibold text-accent">
-              ログアウト
+              {loggingOut ? "ログアウト中…" : "ログアウト"}
             </span>
           </button>
 

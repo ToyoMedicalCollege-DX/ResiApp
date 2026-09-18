@@ -43,7 +43,7 @@ export const CHECK_TYPES: Record<CheckTypeId, CheckType> = {
   phq: {
     id: "phq",
     name: "こころの状態チェック",
-    shortName: "PHQ-9",
+    shortName: "こころ",
     description: "こころの調子や意欲の変化を確認します",
     duration: "約3分・9問",
     color: "#818CF8",
@@ -127,7 +127,7 @@ export const CHECK_TYPES: Record<CheckTypeId, CheckType> = {
   gad: {
     id: "gad",
     name: "やすらぎの状態チェック",
-    shortName: "GAD-7",
+    shortName: "やすらぎ",
     description: "心のやすらぎや心配の強さを確認します",
     duration: "約3分・7問",
     color: "#38BDF8",
@@ -195,7 +195,7 @@ export const CHECK_TYPES: Record<CheckTypeId, CheckType> = {
   psqi: {
     id: "psqi",
     name: "ねむりの状態チェック",
-    shortName: "PSQI簡易版",
+    shortName: "ねむり",
     description: "眠りのリズムと質を確認します",
     duration: "約3分・5問",
     color: "#FB923C",
