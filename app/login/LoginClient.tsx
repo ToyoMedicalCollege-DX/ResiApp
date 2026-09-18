@@ -3,7 +3,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Eye, EyeOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   isValidStudentId,
@@ -34,6 +34,7 @@ export default function LoginClient() {
 
   const [studentId, setStudentId] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(
     presetError === "auth_callback"
@@ -103,16 +104,28 @@ export default function LoginClient() {
 
           <label className="flex flex-col gap-1.5">
             <span className="text-[12px] font-semibold text-t2">パスワード</span>
-            <input
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="6文字以上"
-              className="h-12 rounded-2xl border-2 border-stroke bg-card px-4 text-[15px] text-t1 placeholder:text-t3 focus:outline-none focus:border-accent"
-              required
-              minLength={6}
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="6文字以上"
+                className="h-12 w-full rounded-2xl border-2 border-stroke bg-card pl-4 pr-12 text-[15px] text-t1 placeholder:text-t3 focus:outline-none focus:border-accent"
+                required
+                minLength={6}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-t3 hover:text-t2"
+                aria-label={
+                  showPassword ? "パスワードを隠す" : "パスワードを表示"
+                }
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
           </label>
 
           {error ? (
