@@ -35,25 +35,13 @@ export default function AppHeader({ showBadge = false }: AppHeaderProps) {
 
   return (
     <div className="flex-shrink-0 flex items-center justify-between px-5 pt-4 pb-2 bg-bg">
-      <div className="flex items-center gap-3">
-        <div className="w-11 h-11 rounded-full bg-accent-lt flex items-center justify-center flex-shrink-0 p-1.5">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/icon-192.png?v=2"
-            alt="ResiApp"
-            width={32}
-            height={32}
-            className="w-full h-full object-contain"
-          />
-        </div>
-        <div className="flex flex-col gap-0">
-          <span className="text-[12px] text-t3">{todayLabel()}</span>
-          <span className="text-[16px] font-bold text-t1 leading-tight">
-            {displayName ? `${greeting()}、${displayName}！` : `${greeting()}！`}
-          </span>
-        </div>
+      <div className="flex flex-col gap-0 min-w-0">
+        <span className="text-[12px] text-t3">{todayLabel()}</span>
+        <span className="text-[16px] font-bold text-t1 leading-tight truncate">
+          {displayName ? `${greeting()}、${displayName}！` : `${greeting()}！`}
+        </span>
       </div>
-      <Link href="/settings" className="relative" aria-label="設定">
+      <Link href="/settings" className="relative flex-shrink-0" aria-label="設定">
         <div className="w-10 h-10 rounded-full bg-card shadow-sm flex items-center justify-center">
           <Settings size={20} className="text-t2" />
         </div>

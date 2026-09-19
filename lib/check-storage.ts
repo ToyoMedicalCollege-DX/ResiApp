@@ -153,6 +153,26 @@ export async function saveCheckSessionToSupabase(input: {
       console.warn("check_answers insert:", answersError.message);
       return { ok: false, error: answersError.message };
     }
+
+    const { awardBadge } = await import("@/lib/badges");
+    const { upsertMonthlyScoreSnapshot } = await import("@/lib/monthly-score");
+    const { trackAppEvent } = await import("@/lib/app-events");
+    void awardBadge("first_check", { scale: input.typeId });
+    const latest = loadLatestCheckScores();
+    if (
+      typeof latest.phq === "number" &&
+      typeof latest.gad === "number" &&
+      typeof latest.psqi === "number"
+    ) {
+      void awardBadge("checks_all_scales");
+    }
+    void upsertMonthlyScoreSnapshot(latest);
+    void trackAppEvent("check_complete", {
+      scale: input.typeId,
+      score: input.score,
+      crisis: Boolean(input.crisis),
+    });
+
     return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "同期に失敗しました";

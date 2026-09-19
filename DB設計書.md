@@ -106,6 +106,8 @@ CREATE TABLE public.condition_logs (
                     CHECK (pressure_alert IS NULL
                       OR pressure_alert IN ('normal','mild','caution')),
   weather_snapshot_id UUID REFERENCES public.weather_snapshots(id) ON DELETE SET NULL,
+  note            TEXT NOT NULL DEFAULT '',
+  body_tags       TEXT[] NOT NULL DEFAULT '{}',
   logged_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (user_id, date)
@@ -248,6 +250,14 @@ CREATE TABLE public.notification_settings (
 **画面対応（設定）**
 - 通知を受け取る → `push_enabled`
 - 毎日の通知時間 → `daily_reminder_time`
+
+**関連（採用）**
+- `condition_logs.note` / `body_tags` … 体調メモ・タグ
+- `app_events` … 操作ログ
+- `weather_snapshots` … 天気取得時に保存
+- `monthly_score_snapshots` … チェック完了時に月次確定
+- `user_badges` … 初回チェック／レッスン等で付与
+
 ---
 
 ### 3.5 `lesson_completions` — トレーニング未／済

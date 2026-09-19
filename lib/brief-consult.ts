@@ -125,6 +125,10 @@ export async function sendBriefConsult(
           role: "assistant",
           content: PLACEHOLDER_REPLY,
         });
+        const { trackAppEvent } = await import("@/lib/app-events");
+        void trackAppEvent("consult_send", {
+          moodKey: context?.moodKey ?? null,
+        });
       }
     }
 

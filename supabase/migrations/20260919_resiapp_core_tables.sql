@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS public.condition_logs (
                         CHECK (pressure_alert IS NULL
                           OR pressure_alert IN ('normal', 'mild', 'caution')),
   weather_snapshot_id UUID REFERENCES public.weather_snapshots(id) ON DELETE SET NULL,
+  note                TEXT NOT NULL DEFAULT '',
+  body_tags           TEXT[] NOT NULL DEFAULT '{}',
   logged_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (user_id, date)

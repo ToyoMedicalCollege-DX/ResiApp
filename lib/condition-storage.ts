@@ -109,6 +109,8 @@ export async function syncConditionLogToSupabase(
         mood: log.mood,
         mood_score: log.moodScore,
         pressure_alert: log.pressureAlert ?? null,
+        note: log.note ?? "",
+        body_tags: log.bodyTags ?? [],
         updated_at: log.updatedAt,
       },
       { onConflict: "user_id,date" }
@@ -118,6 +120,16 @@ export async function syncConditionLogToSupabase(
       console.warn("condition_logs upsert:", error.message);
       return { ok: false, error: error.message };
     }
+
+    const { awardBadge } = await import("@/lib/badges");
+    const { trackAppEvent } = await import("@/lib/app-events");
+    void awardBadge("first_condition", { mood: log.mood });
+    void trackAppEvent("condition_save", {
+      date: log.date,
+      mood: log.mood,
+      moodScore: log.moodScore,
+    });
+
     return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "同期に失敗しました";

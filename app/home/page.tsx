@@ -28,6 +28,8 @@ import {
   getConditionLog,
   todayKey,
   upsertConditionLog,
+  BODY_TAG_OPTIONS,
+  type BodyTag,
   type MoodKey,
 } from "@/lib/condition-storage";
 import {
@@ -271,6 +273,8 @@ function WeatherCard({
 export default function HomePage() {
   const [homeTab, setHomeTab] = useState<"condition" | "weather">("condition");
   const [selectedMood, setSelectedMood] = useState<MoodKey | null>(null);
+  const [bodyTags, setBodyTags] = useState<BodyTag[]>([]);
+  const [note, setNote] = useState("");
   const [savedFlash, setSavedFlash] = useState(false);
   const [hasTodayLog, setHasTodayLog] = useState(false);
   const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
@@ -295,6 +299,8 @@ export default function HomePage() {
     const today = getConditionLog(todayKey());
     if (today) {
       setSelectedMood(today.mood);
+      setBodyTags(today.bodyTags ?? []);
+      setNote(today.note ?? "");
       setHasTodayLog(true);
     }
   }, []);
@@ -353,17 +359,22 @@ export default function HomePage() {
 
   const handleSaveCondition = () => {
     if (!selectedMood) return;
-    const existing = getConditionLog(todayKey());
     upsertConditionLog({
       date: todayKey(),
       mood: selectedMood,
-      bodyTags: existing?.bodyTags ?? [],
-      note: existing?.note ?? "",
+      bodyTags,
+      note: note.trim(),
       pressureAlert: weather?.pressureAlert ?? null,
     });
     setHasTodayLog(true);
     setSavedFlash(true);
     window.setTimeout(() => setSavedFlash(false), 1600);
+  };
+
+  const toggleBodyTag = (tag: BodyTag) => {
+    setBodyTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
   };
 
   return (
@@ -471,6 +482,42 @@ export default function HomePage() {
                     );
                   })}
                 </div>
+
+                <div className="flex flex-col gap-2">
+                  <p className="text-[12px] font-semibold text-t2">体の調子（任意）</p>
+                  <div className="flex flex-wrap gap-2">
+                    {BODY_TAG_OPTIONS.map((opt) => {
+                      const on = bodyTags.includes(opt.key);
+                      return (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() => toggleBodyTag(opt.key)}
+                          className="h-8 px-3 rounded-full text-[12px] font-semibold border-2 transition-colors"
+                          style={{
+                            borderColor: on ? "#E8895B" : "#F0E4D8",
+                            backgroundColor: on ? "#FFE8D6" : "#FFF8EE",
+                            color: on ? "#C45C2A" : "#6B5344",
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[12px] font-semibold text-t2">メモ（任意）</span>
+                  <textarea
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    maxLength={200}
+                    rows={2}
+                    placeholder="ひとこと残しておく"
+                    className="w-full rounded-2xl border-2 border-stroke bg-bg px-3 py-2.5 text-[13px] text-t1 placeholder:text-t3 focus:outline-none focus:border-accent resize-none"
+                  />
+                </label>
 
                 <button
                   type="button"

@@ -28,6 +28,13 @@ export async function logSupportLinkClick(
         typeof navigator !== "undefined" ? navigator.userAgent : null,
     });
     if (error) console.warn("support_link_clicks insert:", error.message);
+    else {
+      const { trackAppEvent } = await import("@/lib/app-events");
+      void trackAppEvent("support_link_click", {
+        linkKey: input.linkKey,
+        groupName: input.groupName,
+      });
+    }
   } catch (e) {
     console.warn("support_link_clicks sync failed", e);
   }

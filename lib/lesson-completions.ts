@@ -98,6 +98,14 @@ export async function markLessonCompleted(
       { onConflict: "user_id,lesson_id" }
     );
     if (error) console.warn("lesson_completions upsert:", error.message);
+    else {
+      const { awardBadge } = await import("@/lib/badges");
+      const { trackAppEvent } = await import("@/lib/app-events");
+      void awardBadge("first_lesson", { skillId, lessonId });
+      const count = Object.keys(map).length;
+      if (count >= 5) void awardBadge("lessons_5", { count });
+      void trackAppEvent("lesson_complete", { skillId, lessonId });
+    }
   } catch (e) {
     console.warn("lesson_completions sync failed", e);
   }
