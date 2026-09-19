@@ -278,7 +278,12 @@ export const TIP_LEVEL_META: Record<
   },
 };
 
-/** 気温・気圧・湿度それぞれに一言アドバイス（医療診断ではない環境の目安） */
+/**
+ * 気温・気圧・湿度の一言アドバイス（医療診断ではない環境の目安）
+ *
+ * 気温は連続レンジで判定する（帯の隙間に落ちて誤って「冷え込み」になるのを防ぐ）。
+ * 湿度は気温と組み合わせて、暑い日に冷え込み表現が出ないようにする。
+ */
 export function environmentTipsFromWeather(input: {
   temperatureC: number;
   humidityPct: number;
@@ -286,159 +291,254 @@ export function environmentTipsFromWeather(input: {
   pressureDeltaHpa: number;
   pressureAlert: PressureAlert;
 }): EnvironmentTip[] {
-  const tips: EnvironmentTip[] = [];
-  const t = input.temperatureC;
-  const h = input.humidityPct;
-  const delta = input.pressureDeltaHpa;
+  const t = Number(input.temperatureC);
+  const h = Number(input.humidityPct);
+  const delta = Number(input.pressureDeltaHpa);
+  const p = Number(input.pressureHpa);
   const absDelta = Math.abs(delta);
+  const hotSide = Number.isFinite(t) && t >= 24;
+  const coldSide = Number.isFinite(t) && t < 15;
 
-  // 気温（快適帯を中心に5段階）
-  if (t >= 18 && t <= 23) {
-    tips.push({
-      key: "temperature",
-      label: "気温",
-      level: 1,
-      advice: "過ごしやすい気温。無理のない範囲で体を動かしてみよう",
-    });
-  } else if ((t >= 15 && t <= 17) || (t >= 24 && t <= 26)) {
-    tips.push({
-      key: "temperature",
-      label: "気温",
-      level: 2,
-      advice:
-        t >= 24
-          ? "やや暖かめ。のどが渇く前に水分を意識してみよう"
-          : "やや涼しめ。羽織れる一枚があると安心",
-    });
-  } else if ((t >= 12 && t <= 14) || (t >= 27 && t <= 29)) {
-    tips.push({
-      key: "temperature",
-      label: "気温",
+  return [
+    temperatureTip(t),
+    pressureTip({
+      pressureHpa: p,
+      deltaHpa: delta,
+      absDelta,
+      alert: input.pressureAlert,
+    }),
+    humidityTip(h, { hotSide, coldSide }),
+  ];
+}
+
+/** 気温：暑さ側 / 快適 / 寒さ側を連続レンジで5段階 */
+function temperatureTip(t: number): EnvironmentTip {
+  const base = { key: "temperature" as const, label: "気温" };
+
+  if (!Number.isFinite(t)) {
+    return {
+      ...base,
       level: 3,
-      advice:
-        t >= 27
-          ? "暑さを感じやすい。日陰と水分補給を意識してみよう"
-          : "肌寒い日。首元を冷やさないよう気をつけて",
-    });
-  } else if ((t >= 6 && t <= 11) || (t >= 30 && t <= 32)) {
-    tips.push({
-      key: "temperature",
-      label: "気温",
-      level: 4,
-      advice:
-        t >= 30
-          ? "暑さが強め。直射日光を避けて、こまめに休憩をとろう"
-          : "冷え込みあり。足元をあたためて、急な外出は控えめに",
-    });
-  } else {
-    // <=5 or >=33
-    tips.push({
-      key: "temperature",
-      label: "気温",
-      level: 5,
-      advice:
-        t >= 33
-          ? "猛暑級の暑さ。無理な外出は避け、水分・塩分と休憩を優先しよう"
-          : "強い冷え込み。あたため対策をしっかりして、ペースを落としてみよう",
-    });
+      advice: "気温データを取得できていません。体調の変化に合わせてペースを調整しよう",
+    };
   }
 
-  // 気圧
-  if (input.pressureAlert === "caution" || absDelta >= 6 || delta <= -5) {
-    tips.push({
-      key: "pressure",
-      label: "気圧",
+  // 暑さ側（暑い日に「冷え込み」が出ないよう、高温から先に判定）
+  if (t >= 35) {
+    return {
+      ...base,
+      level: 5,
+      advice:
+        "猛暑級の暑さ。無理な外出は避け、水分・塩分と涼しい場所での休憩を優先しよう",
+    };
+  }
+  if (t >= 32) {
+    return {
+      ...base,
+      level: 4,
+      advice: "強い暑さ。直射日光を避け、こまめな水分補給と休憩を意識しよう",
+    };
+  }
+  if (t >= 28) {
+    return {
+      ...base,
+      level: 3,
+      advice: "暑さを感じやすい日。日陰を選び、のどが渇く前に水分をとろう",
+    };
+  }
+  if (t >= 25) {
+    return {
+      ...base,
+      level: 2,
+      advice: "やや暖かめ。活動の合間に水分を意識してみよう",
+    };
+  }
+
+  // 快適帯
+  if (t >= 18) {
+    return {
+      ...base,
+      level: 1,
+      advice: "過ごしやすい気温。無理のない範囲で体を動かしてみよう",
+    };
+  }
+
+  // 寒さ側
+  if (t >= 15) {
+    return {
+      ...base,
+      level: 2,
+      advice: "やや涼しめ。羽織れる一枚があると安心",
+    };
+  }
+  if (t >= 10) {
+    return {
+      ...base,
+      level: 3,
+      advice: "肌寒い日。首元や手首を冷やさないよう気をつけて",
+    };
+  }
+  if (t >= 5) {
+    return {
+      ...base,
+      level: 4,
+      advice: "冷え込みあり。足元をあたためて、急な外出は控えめに",
+    };
+  }
+  return {
+    ...base,
+    level: 5,
+    advice: "強い冷え込み。あたため対策をしっかりして、ペースを落としてみよう",
+  };
+}
+
+/**
+ * 気圧：24h変化量を主、絶対値は補助。
+ * 下降は上昇より一段厳しめ（不調が出やすい条件として扱う）。
+ */
+function pressureTip(input: {
+  pressureHpa: number;
+  deltaHpa: number;
+  absDelta: number;
+  alert: PressureAlert;
+}): EnvironmentTip {
+  const base = { key: "pressure" as const, label: "気圧" };
+  const { deltaHpa: delta, absDelta, alert, pressureHpa: p } = input;
+
+  const fallingHard = delta <= -5 || alert === "caution";
+  const risingHard = delta >= 6;
+  const fallingMild = delta <= -3 || alert === "mild";
+  const changing = absDelta >= 2.5;
+  const lowAbsolute = Number.isFinite(p) && p <= 1002;
+
+  if (fallingHard || risingHard || absDelta >= 6) {
+    return {
+      ...base,
       level: 5,
       advice:
         delta < 0
           ? "気圧が大きく下がっている日。頭痛やだるさが出やすいこともあるので、休憩と睡眠を意識しよう"
-          : "気圧の変化が大きめ。予定は詰め込みすぎず、ペースを落としてみよう",
-    });
-  } else if (absDelta >= 4 || delta <= -3.5) {
-    tips.push({
-      key: "pressure",
-      label: "気圧",
+          : "気圧の上昇が大きい日。予定は詰め込みすぎず、ペースを落としてみよう",
+    };
+  }
+  if (fallingMild || absDelta >= 4) {
+    return {
+      ...base,
       level: 4,
-      advice: "気圧が変わりやすい日。無理せず、こまめに水分と休憩をとろう",
-    });
-  } else if (
-    input.pressureAlert === "mild" ||
-    absDelta >= 2.5 ||
-    input.pressureHpa <= 1005
-  ) {
-    tips.push({
-      key: "pressure",
-      label: "気圧",
+      advice:
+        delta < 0
+          ? "気圧が下がり気味。無理せず、こまめに水分と休憩をとろう"
+          : "気圧が変わりやすい日。調子を見ながらゆったりめに過ごしてみよう",
+    };
+  }
+  if (changing || lowAbsolute) {
+    return {
+      ...base,
       level: 3,
-      advice: "気圧はやや揺れ気味。体調が揺らぎやすい人はゆったりめに過ごしてみよう",
-    });
-  } else if (absDelta >= 1 || input.pressureHpa <= 1012) {
-    tips.push({
-      key: "pressure",
-      label: "気圧",
+      advice: lowAbsolute
+        ? "気圧はやや低め。体調が揺らぎやすい人はゆったりめに過ごしてみよう"
+        : "気圧はやや揺れ気味。体調が揺らぎやすい人はゆったりめに過ごしてみよう",
+    };
+  }
+  if (absDelta >= 1 || (Number.isFinite(p) && p <= 1010)) {
+    return {
+      ...base,
       level: 2,
       advice: "気圧はおおむね安定。調子を見ながら普段どおり過ごしてOK",
-    });
-  } else {
-    tips.push({
-      key: "pressure",
-      label: "気圧",
-      level: 1,
-      advice: "気圧は安定気味。調子がよければ短い散歩やストレッチもおすすめ",
-    });
+    };
+  }
+  return {
+    ...base,
+    level: 1,
+    advice: "気圧は安定気味。調子がよければ短い散歩やストレッチもおすすめ",
+  };
+}
+
+/**
+ * 湿度：快適帯を中心に5段階。
+ * 暑い日の高湿は「汗冷え」ではなく蒸し暑さ・熱中症予防寄りの表現にする。
+ */
+function humidityTip(
+  h: number,
+  ctx: { hotSide: boolean; coldSide: boolean }
+): EnvironmentTip {
+  const base = { key: "humidity" as const, label: "湿度" };
+
+  if (!Number.isFinite(h)) {
+    return {
+      ...base,
+      level: 3,
+      advice: "湿度データを取得できていません。のどが渇く前に水分をとろう",
+    };
   }
 
-  // 湿度
-  if (h >= 45 && h <= 55) {
-    tips.push({
-      key: "humidity",
-      label: "湿度",
+  // 高湿側
+  if (h >= 85) {
+    return {
+      ...base,
+      level: 5,
+      advice: ctx.hotSide
+        ? "むし暑さが強め。無理な活動は控え、通気・水分・涼しい場所での休憩を優先しよう"
+        : "高湿度。通気をよくして、着替えと休憩を意識しよう",
+    };
+  }
+  if (h >= 75) {
+    return {
+      ...base,
+      level: 4,
+      advice: ctx.hotSide
+        ? "湿気が多くむし暑い。風通しをよくし、汗をかいたら水分補給を忘れずに"
+        : "湿気が多い。室内の風通しと、こまめな休憩を意識しよう",
+    };
+  }
+  if (h >= 65) {
+    return {
+      ...base,
+      level: 3,
+      advice: ctx.hotSide
+        ? "湿っぽく暑さを感じやすい。通気をよくして、水分補給を意識しよう"
+        : ctx.coldSide
+          ? "湿気があり肌寒く感じやすい。乾いた上着や羽織があると安心"
+          : "湿気を感じやすい。通気をよくしてみよう",
+    };
+  }
+  if (h >= 56) {
+    return {
+      ...base,
+      level: 2,
+      advice: "やや湿っぽい。室内の換気を少し意識してみよう",
+    };
+  }
+
+  // 快適
+  if (h >= 40) {
+    return {
+      ...base,
       level: 1,
       advice: "湿度はちょうどよさそう。のどが渇く前に、いつものペースで水分をとろう",
-    });
-  } else if ((h >= 40 && h <= 44) || (h >= 56 && h <= 64)) {
-    tips.push({
-      key: "humidity",
-      label: "湿度",
-      level: 2,
-      advice:
-        h >= 56
-          ? "やや湿っぽい。室内の換気を少し意識してみよう"
-          : "やや乾燥気味。水を飲むタイミングを意識してみよう",
-    });
-  } else if ((h >= 35 && h <= 39) || (h >= 65 && h <= 74)) {
-    tips.push({
-      key: "humidity",
-      label: "湿度",
-      level: 3,
-      advice:
-        h >= 65
-          ? "湿気を感じやすい。通気をよくして、汗冷えに注意しよう"
-          : "乾燥を感じやすい。こまめな水分補給を心がけよう",
-    });
-  } else if ((h >= 31 && h <= 34) || (h >= 75 && h <= 84)) {
-    tips.push({
-      key: "humidity",
-      label: "湿度",
-      level: 4,
-      advice:
-        h >= 75
-          ? "湿気が多い。着替えや休憩を意識して、室内も風通しをよくしよう"
-          : "空気が乾いている。のど・肌のケアと水分補給を意識しよう",
-    });
-  } else {
-    tips.push({
-      key: "humidity",
-      label: "湿度",
-      level: 5,
-      advice:
-        h >= 85
-          ? "高湿度。無理な活動は控え、通気・水分・休憩を優先しよう"
-          : "強い乾燥。のど・肌のケアと、こまめな水分補給を優先しよう",
-    });
+    };
   }
 
-  return tips;
+  // 乾燥側
+  if (h >= 30) {
+    return {
+      ...base,
+      level: 2,
+      advice: "やや乾燥気味。水を飲むタイミングを意識してみよう",
+    };
+  }
+  if (h >= 20) {
+    return {
+      ...base,
+      level: 4,
+      advice: "空気が乾いている。のど・肌のケアと水分補給を意識しよう",
+    };
+  }
+  return {
+    ...base,
+    level: 5,
+    advice: "強い乾燥。のど・肌のケアと、こまめな水分補給を優先しよう",
+  };
 }
 
 function loadCache(): WeatherSnapshot | null {
