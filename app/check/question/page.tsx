@@ -11,7 +11,7 @@ import {
   parseTimeToMinutes,
   type CheckTypeId,
 } from "@/lib/check";
-import { saveLatestCheckScore } from "@/lib/check-storage";
+import { saveLatestCheckScore, saveCheckSessionToSupabase } from "@/lib/check-storage";
 
 function CheckQuestionContent() {
   const searchParams = useSearchParams();
@@ -24,6 +24,7 @@ function CheckQuestionContent() {
   const [selected, setSelected] = useState<number | null>(null);
   const [timeValue, setTimeValue] = useState("");
   const [done, setDone] = useState(false);
+  const [startedAt] = useState(() => new Date().toISOString());
 
   const question = check.questions[current];
   const total = check.questions.length;
@@ -45,8 +46,16 @@ function CheckQuestionContent() {
     setSelected(null);
     setTimeValue("");
     if (current + 1 >= total) {
-      const { score } = evaluateCheck(typeId, newAnswers);
+      const { score, level, crisis } = evaluateCheck(typeId, newAnswers);
       saveLatestCheckScore(typeId, score);
+      void saveCheckSessionToSupabase({
+        typeId,
+        answers: newAnswers,
+        score,
+        band: level.label,
+        crisis,
+        startedAt,
+      });
       setDone(true);
     } else {
       setCurrent(current + 1);

@@ -1,5 +1,6 @@
 import type { CheckTypeId } from "@/lib/check";
 import { CHECK_TYPES } from "@/lib/check";
+import { createClient } from "@/lib/supabase/client";
 
 const LATEST_KEY = "resiapp.check.latestScores.v2";
 const HISTORY_KEY = "resiapp.check.scoreHistory.v1";
@@ -80,7 +81,82 @@ export function saveLatestCheckScore(typeId: CheckTypeId, score: number): void {
     psqi: next.psqi,
     total: total ?? undefined,
   });
-  // 直近 52 件まで
   const trimmed = history.slice(-52);
   localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
+}
+
+/** チェック完了を check_sessions / check_answers に保存 */
+export async function saveCheckSessionToSupabase(input: {
+  typeId: CheckTypeId;
+  answers: (number | string)[];
+  score: number;
+  band: string;
+  crisis?: boolean;
+  startedAt?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const supabase = createClient();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError) throw userError;
+    const user = userData.user;
+    if (!user) return { ok: true };
+
+    const check = CHECK_TYPES[input.typeId];
+    const completedAt = new Date();
+    const startedAt = input.startedAt
+      ? new Date(input.startedAt)
+      : completedAt;
+    const periodYm = `${completedAt.getFullYear()}-${String(completedAt.getMonth() + 1).padStart(2, "0")}`;
+
+    const { data: session, error: sessionError } = await supabase
+      .from("check_sessions")
+      .insert({
+        user_id: user.id,
+        scale: input.typeId,
+        period_ym: periodYm,
+        raw_score: input.score,
+        max_score: check.maxScore,
+        band: input.band,
+        crisis: Boolean(input.crisis),
+        started_at: startedAt.toISOString(),
+        completed_at: completedAt.toISOString(),
+        duration_ms: Math.max(0, completedAt.getTime() - startedAt.getTime()),
+      })
+      .select("id")
+      .single();
+
+    if (sessionError || !session) {
+      const msg = sessionError?.message ?? "session insert failed";
+      console.warn("check_sessions insert:", msg);
+      return { ok: false, error: msg };
+    }
+
+    const rows = check.questions.map((q, i) => {
+      const raw = input.answers[i];
+      return {
+        session_id: session.id,
+        user_id: user.id,
+        scale: input.typeId,
+        question_id: q.id,
+        question_no: i + 1,
+        answer_value: q.kind === "choice" ? Number(raw) : null,
+        answer_text: q.kind === "time" ? String(raw ?? "") : null,
+        answered_at: completedAt.toISOString(),
+      };
+    });
+
+    const { error: answersError } = await supabase
+      .from("check_answers")
+      .insert(rows);
+
+    if (answersError) {
+      console.warn("check_answers insert:", answersError.message);
+      return { ok: false, error: answersError.message };
+    }
+    return { ok: true };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "同期に失敗しました";
+    console.warn("check session sync failed:", msg);
+    return { ok: false, error: msg };
+  }
 }

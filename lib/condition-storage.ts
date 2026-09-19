@@ -1,3 +1,4 @@
+import { createClient } from "@/lib/supabase/client";
 import type { PressureAlert } from "@/lib/weather";
 
 export type MoodKey = "great" | "good" | "okay" | "bad" | "rough";
@@ -86,7 +87,43 @@ export function upsertConditionLog(
   if (canUseStorage()) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
   }
+  void syncConditionLogToSupabase(next);
   return next;
+}
+
+/** ログイン中なら condition_logs に upsert */
+export async function syncConditionLogToSupabase(
+  log: ConditionLog
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const supabase = createClient();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError) throw userError;
+    const user = userData.user;
+    if (!user) return { ok: true };
+
+    const { error } = await supabase.from("condition_logs").upsert(
+      {
+        user_id: user.id,
+        date: log.date,
+        mood: log.mood,
+        mood_score: log.moodScore,
+        pressure_alert: log.pressureAlert ?? null,
+        updated_at: log.updatedAt,
+      },
+      { onConflict: "user_id,date" }
+    );
+
+    if (error) {
+      console.warn("condition_logs upsert:", error.message);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "同期に失敗しました";
+    console.warn("condition_logs sync failed:", msg);
+    return { ok: false, error: msg };
+  }
 }
 
 /** 直近 N 日分（古い→新しい）。未記録日は null */

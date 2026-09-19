@@ -3,10 +3,12 @@
 import { useState, useCallback } from "react";
 import { CheckCircle, ChevronLeft, ChevronRight, X } from "lucide-react";
 import type { Slide, Skill } from "@/lib/types";
+import { saveWorkAnswer } from "@/lib/work-answers";
 
 interface LessonSlidePlayerProps {
   slides: Slide[];
   skill: Skill;
+  lessonId: string;
   lessonTitle: string;
   onComplete: () => void;
   onBack: () => void;
@@ -204,7 +206,17 @@ function QuizSlide({
   );
 }
 
-function WorkSlide({ slide, skill }: { slide: Slide; skill: Skill }) {
+function WorkSlide({
+  slide,
+  skill,
+  value,
+  onChange,
+}: {
+  slide: Slide;
+  skill: Skill;
+  value: string;
+  onChange: (v: string) => void;
+}) {
   const accent = slide.accentColor ?? skill.color;
   return (
     <div className="h-full min-h-0 overflow-y-auto overscroll-contain px-5 py-6 flex flex-col gap-5">
@@ -228,6 +240,8 @@ function WorkSlide({ slide, skill }: { slide: Slide; skill: Skill }) {
           <p className="text-[13px] font-bold text-t1">{slide.work.prompt}</p>
           <textarea
             rows={4}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
             placeholder={slide.work.hint ?? "ここに書いてみよう…"}
             className="w-full rounded-2xl border-2 border-stroke bg-bg px-4 py-3 text-[14px] text-t1 placeholder:text-t3 focus:outline-none focus:border-accent resize-none"
           />
@@ -276,6 +290,7 @@ function SummarySlide({ slide, skill }: { slide: Slide; skill: Skill }) {
 export default function LessonSlidePlayer({
   slides,
   skill,
+  lessonId,
   lessonTitle,
   onComplete,
   onBack,
@@ -287,6 +302,9 @@ export default function LessonSlidePlayer({
   );
   const [quizSelected, setQuizSelected] = useState<(number | null)[]>(
     new Array(slides.length).fill(null)
+  );
+  const [workAnswers, setWorkAnswers] = useState<string[]>(
+    () => new Array(slides.length).fill("")
   );
 
   const slide = slides[current];
@@ -310,9 +328,24 @@ export default function LessonSlidePlayer({
     [current, quizAnswered, quizSelected]
   );
 
+  const persistWorkAnswers = () => {
+    slides.forEach((s, i) => {
+      if (s.type !== "work" || !s.work) return;
+      const text = workAnswers[i]?.trim();
+      if (!text) return;
+      void saveWorkAnswer({
+        skillId: skill.id,
+        lessonId,
+        promptKey: s.id || `work-${i}`,
+        answerText: text,
+      });
+    });
+  };
+
   const goNext = () => {
     if (!canAdvance) return;
     if (current === total - 1) {
+      persistWorkAnswers();
       onComplete();
     } else {
       setDirection("forward");
@@ -377,7 +410,20 @@ export default function LessonSlidePlayer({
             selectedIdx={quizSelected[current]}
           />
         )}
-        {slide.type === "work" && <WorkSlide slide={slide} skill={skill} />}
+        {slide.type === "work" && (
+          <WorkSlide
+            slide={slide}
+            skill={skill}
+            value={workAnswers[current] ?? ""}
+            onChange={(v) => {
+              setWorkAnswers((prev) => {
+                const next = [...prev];
+                next[current] = v;
+                return next;
+              });
+            }}
+          />
+        )}
         {slide.type === "summary" && <SummarySlide slide={slide} skill={skill} />}
       </div>
 

@@ -36,6 +36,7 @@ import {
   saveNotificationSettings,
   type NotificationSettings,
 } from "@/lib/notification-settings";
+import { logSupportLinkClick } from "@/lib/support-clicks";
 
 const PROFILE_KEY = "resiapp.settings.profile";
 
@@ -227,13 +228,43 @@ export default function SettingsPage() {
         });
         if (metaError) throw metaError;
 
-        const { error: profileError } = await supabase
+        const { data: updated, error: profileError } = await supabase
           .from("profiles")
-          .update({ name: trimmedName, department: trimmedDept })
-          .eq("id", user.id);
-        // profiles 未作成環境でもメタデータ更新は成功させる
-        if (profileError && profileError.code !== "PGRST116") {
+          .update({
+            name: trimmedName,
+            department: trimmedDept,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", user.id)
+          .select("id")
+          .maybeSingle();
+
+        if (profileError) {
           console.warn("profiles update:", profileError.message);
+          throw new Error(`プロフィール保存に失敗: ${profileError.message}`);
+        }
+
+        if (!updated) {
+          const sid =
+            studentIdFromUser(user) ||
+            String(user.user_metadata?.student_id ?? "")
+              .toUpperCase()
+              .trim();
+          if (!sid) {
+            throw new Error(
+              "プロフィール行がありません。一度ログアウトして再ログインするか、新規登録し直してください。"
+            );
+          }
+          const { error: insertError } = await supabase.from("profiles").insert({
+            id: user.id,
+            name: trimmedName,
+            department: trimmedDept,
+            student_id: sid,
+          });
+          if (insertError) {
+            console.warn("profiles insert:", insertError.message);
+            throw new Error(`プロフィール作成に失敗: ${insertError.message}`);
+          }
         }
 
         const { data: refreshed } = await supabase.auth.getUser();
@@ -577,6 +608,9 @@ export default function SettingsPage() {
 
                         if ("href" in item && item.href) {
                           const external = item.href.startsWith("http");
+                          const linkKey = `${group.name}-${item.label}`
+                            .replace(/\s+/g, "_")
+                            .toLowerCase();
                           return (
                             <a
                               key={`${group.name}-${item.label}`}
@@ -587,6 +621,14 @@ export default function SettingsPage() {
                                     rel: "noopener noreferrer",
                                   }
                                 : {})}
+                              onClick={() => {
+                                void logSupportLinkClick({
+                                  linkKey,
+                                  linkLabel: item.label,
+                                  href: item.href!,
+                                  groupName: group.name,
+                                });
+                              }}
                               className="rounded-2xl bg-bg px-3 py-2.5 flex items-start justify-between gap-2"
                             >
                               {content}

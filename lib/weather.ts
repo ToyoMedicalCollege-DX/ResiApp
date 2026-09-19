@@ -1,3 +1,5 @@
+import { createClient } from "@/lib/supabase/client";
+
 export type PressureAlert = "normal" | "mild" | "caution";
 
 export type WeatherRegion = {
@@ -67,6 +69,39 @@ export function loadWeatherPrefs(): WeatherPrefs {
 export function saveWeatherPrefs(prefs: WeatherPrefs): void {
   if (!canUseStorage()) return;
   localStorage.setItem(PREFS_KEY, JSON.stringify({ regionKey: prefs.regionKey }));
+  void syncWeatherPrefsToSupabase(prefs);
+}
+
+/** ログイン中なら user_preferences に upsert */
+export async function syncWeatherPrefsToSupabase(
+  prefs: WeatherPrefs
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const supabase = createClient();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError) throw userError;
+    const user = userData.user;
+    if (!user) return { ok: true };
+
+    const { error } = await supabase.from("user_preferences").upsert(
+      {
+        user_id: user.id,
+        weather_region_key: prefs.regionKey,
+        weather_enabled: true,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" }
+    );
+    if (error) {
+      console.warn("user_preferences upsert:", error.message);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "同期に失敗しました";
+    console.warn("user_preferences sync failed:", msg);
+    return { ok: false, error: msg };
+  }
 }
 
 export function getRegion(key: string): WeatherRegion {

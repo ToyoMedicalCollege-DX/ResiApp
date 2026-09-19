@@ -93,6 +93,7 @@ export default function LessonDetailPage({
       <LessonSlidePlayer
         slides={slides}
         skill={skill}
+        lessonId={lessonId}
         lessonTitle={lesson.title}
         onComplete={handleComplete}
         onBack={() => router.push(`/training/${skillId}`)}
