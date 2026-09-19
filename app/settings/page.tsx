@@ -12,9 +12,9 @@ import {
   BookOpen,
   MapPin,
   LocateFixed,
+  Bell,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { USER } from "@/lib/mock-data";
 import { createClient } from "@/lib/supabase/client";
 import {
   departmentFromUser,
@@ -30,6 +30,12 @@ import {
   type WeatherPrefs,
 } from "@/lib/weather";
 import { DEPARTMENTS, isDepartment } from "@/lib/departments";
+import {
+  DEFAULT_NOTIFICATION_SETTINGS,
+  loadNotificationSettings,
+  saveNotificationSettings,
+  type NotificationSettings,
+} from "@/lib/notification-settings";
 
 const PROFILE_KEY = "resiapp.settings.profile";
 
@@ -135,22 +141,36 @@ export default function SettingsPage() {
   const [weatherSaved, setWeatherSaved] = useState(false);
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsMessage, setGpsMessage] = useState("");
-  const [displayName, setDisplayName] = useState(USER.nickname);
-  const [initial, setInitial] = useState(
-    USER.nickname.replace(/さん$/, "").slice(0, 1) || "？"
-  );
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [initial, setInitial] = useState("？");
   const [studentIdLabel, setStudentIdLabel] = useState("");
   const [loggingOut, setLoggingOut] = useState(false);
+  const [notif, setNotif] = useState<NotificationSettings>(
+    DEFAULT_NOTIFICATION_SETTINGS
+  );
+  const [notifSaved, setNotifSaved] = useState(false);
+  const [notifHint, setNotifHint] = useState("");
+  const [profileReady, setProfileReady] = useState(false);
 
   useEffect(() => {
     const profile = loadProfile();
     setDepartment(profile.department);
     setWeatherPrefs(loadWeatherPrefs());
 
+    void loadNotificationSettings().then(setNotif);
+
     const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) {
-        if (profile.name) setNameInput(stripSan(profile.name));
+        if (profile.name) {
+          const shown = profile.name.endsWith("さん")
+            ? profile.name
+            : `${stripSan(profile.name)}さん`;
+          setDisplayName(shown);
+          setInitial(stripSan(shown).slice(0, 1) || "？");
+          setNameInput(stripSan(profile.name));
+        }
+        setProfileReady(true);
         return;
       }
       const shown = displayNameFromUser(data.user);
@@ -161,6 +181,7 @@ export default function SettingsPage() {
       const dept = departmentFromUser(data.user);
       if (dept) setDepartment(dept);
       else if (profile.department) setDepartment(profile.department);
+      setProfileReady(true);
     });
   }, []);
 
@@ -250,6 +271,50 @@ export default function SettingsPage() {
     window.setTimeout(() => setWeatherSaved(false), 1600);
   };
 
+  const persistNotif = async (next: NotificationSettings) => {
+    setNotif(next);
+    const result = await saveNotificationSettings(next);
+    setNotifSaved(true);
+    setNotifHint(
+      result.error
+        ? "端末に保存しました（クラウド同期は後で再試行されます）"
+        : ""
+    );
+    window.setTimeout(() => {
+      setNotifSaved(false);
+      setNotifHint("");
+    }, 1800);
+  };
+
+  const toggleNotif = (key: "pushEnabled") => {
+    void persistNotif({ ...notif, [key]: !notif[key] });
+  };
+
+  const Switch = ({
+    on,
+    disabled,
+    onClick,
+  }: {
+    on: boolean;
+    disabled?: boolean;
+    onClick: () => void;
+  }) => (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      disabled={disabled}
+      onClick={onClick}
+      className="w-12 h-7 rounded-full transition-colors flex-shrink-0 relative disabled:opacity-40"
+      style={{ backgroundColor: on ? "#E8895B" : "#F0E4D8" }}
+    >
+      <span
+        className="absolute top-0.5 w-6 h-6 rounded-full bg-white shadow transition-all"
+        style={{ left: on ? 22 : 2 }}
+      />
+    </button>
+  );
+
   const handleUseGps = () => {
     if (gpsLoading) return;
     if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -305,12 +370,12 @@ export default function SettingsPage() {
             <div className="bg-card rounded-3xl p-5 flex items-center gap-4 shadow-sm">
               <div className="w-14 h-14 rounded-full bg-accent-lt flex items-center justify-center flex-shrink-0">
                 <span className="text-[22px] font-bold text-accent">
-                  {initial}
+                  {profileReady ? initial : ""}
                 </span>
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[16px] font-bold text-t1 truncate">
-                  {displayName}
+                  {profileReady ? displayName || "ゲスト" : " "}
                 </p>
                 <p className="text-[12px] text-t3 mt-0.5 truncate">
                   {[studentIdLabel && `学籍番号 ${studentIdLabel}`, department]
@@ -413,6 +478,53 @@ export default function SettingsPage() {
               {(gpsMessage || weatherSaved) && (
                 <p className="text-[12px] font-semibold text-accent">
                   {gpsMessage || "天気設定を保存しました"}
+                </p>
+              )}
+            </div>
+          </section>
+
+          <section className="flex flex-col gap-2">
+            <h2 className="text-[12px] font-bold text-t3 px-1">通知設定</h2>
+            <div className="bg-card rounded-3xl p-4 shadow-sm flex flex-col gap-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-accent-lt flex items-center justify-center flex-shrink-0">
+                  <Bell size={18} className="text-accent" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[14px] font-semibold text-t1">通知を受け取る</p>
+                </div>
+                <Switch
+                  on={notif.pushEnabled}
+                  onClick={() => toggleNotif("pushEnabled")}
+                />
+              </div>
+
+              <div
+                className={`flex flex-col gap-2 ${
+                  notif.pushEnabled ? "" : "opacity-45 pointer-events-none"
+                }`}
+              >
+                <p className="text-[14px] font-semibold text-t1">
+                  毎日の通知時間
+                </p>
+                <input
+                  type="time"
+                  value={notif.dailyReminderTime}
+                  disabled={!notif.pushEnabled}
+                  onChange={(e) =>
+                    void persistNotif({
+                      ...notif,
+                      dailyReminderTime: e.target.value || "20:00",
+                    })
+                  }
+                  className="h-12 rounded-2xl border-2 border-stroke bg-bg px-4 text-[15px] font-medium text-t1 focus:outline-none focus:border-accent"
+                  aria-label="毎日の通知時間"
+                />
+              </div>
+
+              {notifSaved && (
+                <p className="text-[12px] font-semibold text-accent">
+                  {notifHint || "通知設定を保存しました"}
                 </p>
               )}
             </div>

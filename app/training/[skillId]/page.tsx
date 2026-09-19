@@ -1,27 +1,34 @@
 "use client";
 
-import { use } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, BookOpen, PenLine, RotateCcw, Lock } from "lucide-react";
 import { CheckCircle } from "lucide-react";
 import { SKILLS, LESSONS_BY_SKILL } from "@/lib/mock-data";
+import {
+  isLessonCompleted,
+  loadLessonCompletions,
+  type LessonCompletionMap,
+} from "@/lib/lesson-completions";
 import type { Lesson } from "@/lib/types";
 
 const TYPE_CONFIG = {
-  learn:  { icon: BookOpen,  label: "学習" },
-  work:   { icon: PenLine,   label: "ワーク" },
+  learn: { icon: BookOpen, label: "学習" },
+  work: { icon: PenLine, label: "ワーク" },
   review: { icon: RotateCcw, label: "振り返り" },
 };
 
 function LessonRow({
   lesson,
   index,
+  completed,
   isUnlocked,
   themeColor,
   themeBg,
 }: {
   lesson: Lesson;
   index: number;
+  completed: boolean;
   isUnlocked: boolean;
   themeColor: string;
   themeBg: string;
@@ -38,19 +45,15 @@ function LessonRow({
       <div
         className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-[13px]"
         style={{
-          backgroundColor: lesson.completed
+          backgroundColor: completed
             ? themeColor
             : isUnlocked
               ? themeBg
               : "#F5EDE4",
-          color: lesson.completed
-            ? "#FFF"
-            : isUnlocked
-              ? themeColor
-              : "#A89080",
+          color: completed ? "#FFF" : isUnlocked ? themeColor : "#A89080",
         }}
       >
-        {lesson.completed ? (
+        {completed ? (
           <CheckCircle size={16} color="#FFF" />
         ) : (
           index + 1
@@ -96,6 +99,11 @@ export default function SkillPage({
   const { skillId } = use(params);
   const skill = SKILLS.find((s) => s.id === skillId);
   const lessons = LESSONS_BY_SKILL[skillId] ?? [];
+  const [completions, setCompletions] = useState<LessonCompletionMap>({});
+
+  useEffect(() => {
+    void loadLessonCompletions().then(setCompletions);
+  }, []);
 
   if (!skill)
     return (
@@ -104,11 +112,14 @@ export default function SkillPage({
       </div>
     );
 
-  const progressRatio = skill.completedLessons / skill.totalLessons;
+  const completedCount = lessons.filter((l) =>
+    isLessonCompleted(completions, l.id)
+  ).length;
+  const progressRatio =
+    skill.totalLessons > 0 ? completedCount / skill.totalLessons : 0;
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-bg">
-      {/* Header */}
       <div
         className="flex-shrink-0 flex flex-col"
         style={{ backgroundColor: skill.color }}
@@ -128,10 +139,9 @@ export default function SkillPage({
             </span>
           </div>
           <span className="text-[12px] text-white/80 flex-shrink-0 pb-0.5">
-            {skill.completedLessons}/{skill.totalLessons}
+            {completedCount}/{skill.totalLessons}
           </span>
         </div>
-        {/* 下端は全幅で揃え、進捗は白のオーバーレイで表現 */}
         <div className="h-1.5 w-full bg-black/15">
           <div
             className="h-full bg-white/70"
@@ -140,20 +150,23 @@ export default function SkillPage({
         </div>
       </div>
 
-      {/* Lesson List — scrollable */}
       <div className="flex-1 overflow-y-auto">
         <div className="flex flex-col gap-3 px-4 py-4">
           {lessons.length > 0 ? (
             lessons.map((lesson, i) => {
-              // 完了済み、または次のレッスン、またはスライド実装済みスキルは閲覧可
-              const slidesReady = ["sk1", "sk2", "sk3", "sk4", "sk5"].includes(skillId);
-              const isUnlocked =
-                slidesReady || lesson.completed || i <= skill.completedLessons;
+              const completed = isLessonCompleted(completions, lesson.id);
+              const prevDone =
+                i === 0 || isLessonCompleted(completions, lessons[i - 1].id);
+              const slidesReady = ["sk1", "sk2", "sk3", "sk4", "sk5"].includes(
+                skillId
+              );
+              const isUnlocked = slidesReady || completed || prevDone || i === 0;
               return (
                 <LessonRow
                   key={lesson.id}
                   lesson={lesson}
                   index={i}
+                  completed={completed}
                   isUnlocked={isUnlocked}
                   themeColor={skill.color}
                   themeBg={skill.bgColor}
@@ -169,7 +182,9 @@ export default function SkillPage({
                 <BookOpen size={32} color={skill.color} />
               </div>
               <p className="text-[16px] font-bold text-t1">コンテンツ準備中</p>
-              <p className="text-[13px] text-t2">このスキルのレッスンは近日公開予定です。</p>
+              <p className="text-[13px] text-t2">
+                このスキルのレッスンは近日公開予定です。
+              </p>
             </div>
           )}
         </div>

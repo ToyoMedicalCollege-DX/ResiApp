@@ -170,12 +170,14 @@ CREATE POLICY "user_preferences_select_own"
   USING (auth.uid() = user_id);
 
 DROP POLICY IF EXISTS "user_preferences_upsert_own" ON public.user_preferences;
+DROP POLICY IF EXISTS "user_preferences_insert_own" ON public.user_preferences;
 CREATE POLICY "user_preferences_insert_own"
   ON public.user_preferences
   FOR INSERT
   TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "user_preferences_update_own" ON public.user_preferences;
 CREATE POLICY "user_preferences_update_own"
   ON public.user_preferences
   FOR UPDATE

@@ -11,8 +11,13 @@ import { SK3_SLIDES } from "@/lib/slides-sk3";
 import { SK4_SLIDES } from "@/lib/slides-sk4";
 import { SK5_SLIDES } from "@/lib/slides-sk5";
 import LessonSlidePlayer from "@/components/LessonSlidePlayer";
+import { markLessonCompleted } from "@/lib/lesson-completions";
+import type { SkillId } from "@/lib/types";
 
-const SLIDES_MAP: Record<string, Record<string, import("@/lib/types").Slide[]>> = {
+const SLIDES_MAP: Record<
+  string,
+  Record<string, import("@/lib/types").Slide[]>
+> = {
   sk1: SK1_SLIDES,
   sk2: SK2_SLIDES,
   sk3: SK3_SLIDES,
@@ -32,9 +37,12 @@ export default function LessonDetailPage({
   const skill = SKILLS.find((s) => s.id === skillId);
   const lessons = LESSONS_BY_SKILL[skillId] ?? [];
   const lesson = lessons.find((l) => l.id === lessonId) ?? TODAY_LESSON;
-
-  // Check if slide data exists for this lesson
   const slides = SLIDES_MAP[skillId]?.[lessonId];
+
+  const handleComplete = () => {
+    void markLessonCompleted(skillId as SkillId, lessonId);
+    setCompleted(true);
+  };
 
   if (!skill)
     return (
@@ -43,7 +51,6 @@ export default function LessonDetailPage({
       </div>
     );
 
-  // ── Completion screen ─────────────────────────────────────
   if (completed) {
     return (
       <div className="h-full flex flex-col items-center justify-center px-8 gap-6 bg-bg">
@@ -81,32 +88,27 @@ export default function LessonDetailPage({
     );
   }
 
-  // ── Slide player (SK01 and others with slide data) ────────
   if (slides && slides.length > 0) {
     return (
       <LessonSlidePlayer
         slides={slides}
         skill={skill}
         lessonTitle={lesson.title}
-        onComplete={() => setCompleted(true)}
+        onComplete={handleComplete}
         onBack={() => router.push(`/training/${skillId}`)}
       />
     );
   }
 
-  // スライド未登録時のフォールバック
   return (
     <div className="h-full flex flex-col items-center justify-center px-8 gap-4 bg-bg text-center">
       <p className="text-[16px] font-bold text-t1">スライドが見つかりません</p>
-      <p className="text-[13px] text-t2">
-        「{lesson.title}」のレッスンデータがまだ登録されていません。
-      </p>
       <Link
         href={`/training/${skillId}`}
-        className="mt-2 flex items-center justify-center h-[48px] px-6 rounded-[24px] text-white font-bold text-[14px]"
-        style={{ backgroundColor: skill.color }}
+        className="text-[14px] font-semibold"
+        style={{ color: skill.color }}
       >
-        レッスン一覧に戻る
+        スキル一覧に戻る
       </Link>
     </div>
   );

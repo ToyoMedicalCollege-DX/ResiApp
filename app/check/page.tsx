@@ -12,8 +12,13 @@ import {
 } from "lucide-react";
 import TabBar from "@/components/TabBar";
 import AppHeader from "@/components/AppHeader";
-import { CHECK_HISTORY } from "@/lib/mock-data";
 import { CHECK_TYPE_LIST, type CheckTypeId } from "@/lib/check";
+import {
+  computeTotalScore,
+  loadCheckScoreHistory,
+  loadLatestCheckScores,
+  type LatestCheckScores,
+} from "@/lib/check-storage";
 import { createClient } from "@/lib/supabase/client";
 import { departmentFromUser } from "@/lib/auth-display";
 import {
@@ -21,10 +26,6 @@ import {
   deptCharImagePath,
 } from "@/lib/dept-character";
 import { isDepartment } from "@/lib/departments";
-
-const LATEST = CHECK_HISTORY[CHECK_HISTORY.length - 1];
-const PREV = CHECK_HISTORY[CHECK_HISTORY.length - 2];
-const DELTA = LATEST.total - PREV.total;
 
 const PROFILE_KEY = "resiapp.settings.profile";
 
@@ -54,8 +55,6 @@ const scoreLevel = (score: number) => {
   if (score >= 50) return { label: "普通", color: "#FBBF24", bg: "#FBBF2422" };
   return { label: "注意", color: "#FB923C", bg: "#FB923C22" };
 };
-
-const level = scoreLevel(LATEST.total);
 
 function StateIcon({
   kind,
@@ -101,20 +100,36 @@ function loadLocalDepartment(): string {
   }
 }
 
+function previousMonthTotal(): number | null {
+  const history = loadCheckScoreHistory();
+  if (history.length < 2) return null;
+  const now = new Date();
+  const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevMonth = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, "0")}`;
+
+  const prevEntries = history.filter((h) => h.at.slice(0, 7) === prevMonth);
+  if (prevEntries.length === 0) return null;
+  const lastPrev = prevEntries[prevEntries.length - 1];
+  if (typeof lastPrev.total === "number") return lastPrev.total;
+  return computeTotalScore(lastPrev);
+}
+
 export default function CheckPage() {
   const [department, setDepartment] = useState("");
   const [charSrc, setCharSrc] = useState<string | null>(null);
+  const [scores, setScores] = useState<LatestCheckScores>({});
+  const [ready, setReady] = useState(false);
 
-  const TrendIcon = DELTA > 0 ? TrendingUp : DELTA < 0 ? TrendingDown : Minus;
-  const trendColor = DELTA > 0 ? "#27AE76" : DELTA < 0 ? "#EF4444" : "#94A3B8";
-  const trendText =
-    DELTA > 0
-      ? `先月より +${DELTA} ポイント`
-      : DELTA < 0
-        ? `先月より ${DELTA} ポイント`
-        : "先月と同じスコア";
+  const total = computeTotalScore(scores);
+  const level = total != null ? scoreLevel(total) : null;
+  const prevTotal = previousMonthTotal();
+  const delta =
+    total != null && prevTotal != null ? total - prevTotal : null;
 
   useEffect(() => {
+    setScores(loadLatestCheckScores());
+    setReady(true);
+
     const localDept = loadLocalDepartment();
     if (isDepartment(localDept)) setDepartment(localDept);
 
@@ -127,10 +142,35 @@ export default function CheckPage() {
   }, []);
 
   useEffect(() => {
-    setCharSrc(deptCharImagePath(department, LATEST.total));
-  }, [department]);
+    if (total == null) {
+      setCharSrc(deptCharFallbackPath(department));
+      return;
+    }
+    setCharSrc(deptCharImagePath(department, total));
+  }, [department, total]);
 
   const fallbackSrc = deptCharFallbackPath(department);
+
+  const TrendIcon =
+    delta != null && delta > 0
+      ? TrendingUp
+      : delta != null && delta < 0
+        ? TrendingDown
+        : Minus;
+  const trendColor =
+    delta != null && delta > 0
+      ? "#27AE76"
+      : delta != null && delta < 0
+        ? "#EF4444"
+        : "#94A3B8";
+  const trendText =
+    delta == null
+      ? "チェックを続けると先月比が出ます"
+      : delta > 0
+        ? `先月より +${delta} ポイント`
+        : delta < 0
+          ? `先月より ${delta} ポイント`
+          : "先月と同じスコア";
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-bg">
@@ -140,7 +180,6 @@ export default function CheckPage() {
         <div className="flex flex-col gap-6 px-5 pt-2 pb-6">
           <h1 className="text-2xl font-bold text-t1">セルフチェック ✓</h1>
 
-          {/* 今月の総合スコア */}
           <div className="bg-card rounded-2xl overflow-hidden shadow-sm">
             <div className="bg-accent px-4 py-2">
               <span className="text-[12px] font-semibold text-white/90">
@@ -152,29 +191,31 @@ export default function CheckPage() {
                 <div className="flex items-end justify-between gap-2">
                   <div className="flex items-baseline gap-1">
                     <span className="text-[36px] font-bold text-accent leading-none tracking-tight">
-                      {LATEST.total}
+                      {ready && total != null ? total : "—"}
                     </span>
                     <span className="text-[13px] font-semibold text-t3 pb-0.5">
                       / 100
                     </span>
                   </div>
-                  <div
-                    className="px-2.5 py-1 rounded-full mb-0.5"
-                    style={{ backgroundColor: level.bg }}
-                  >
-                    <span
-                      className="text-[12px] font-bold"
-                      style={{ color: level.color }}
+                  {level && (
+                    <div
+                      className="px-2.5 py-1 rounded-full mb-0.5"
+                      style={{ backgroundColor: level.bg }}
                     >
-                      {level.label}
-                    </span>
-                  </div>
+                      <span
+                        className="text-[12px] font-bold"
+                        style={{ color: level.color }}
+                      >
+                        {level.label}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="h-2 rounded-full bg-stroke overflow-hidden">
                   <div
                     className="h-full rounded-full bg-accent transition-all"
-                    style={{ width: `${LATEST.total}%` }}
+                    style={{ width: `${total ?? 0}%` }}
                   />
                 </div>
 
@@ -187,14 +228,18 @@ export default function CheckPage() {
                     className="text-[12px] font-semibold"
                     style={{ color: trendColor }}
                   >
-                    {trendText}
+                    {ready
+                      ? total == null
+                        ? "まだチェックしていません"
+                        : trendText
+                      : "…"}
                   </span>
                 </div>
               </div>
 
               <div
                 className="w-[96px] flex-shrink-0 rounded-2xl flex items-center justify-center overflow-hidden"
-                style={{ backgroundColor: level.bg }}
+                style={{ backgroundColor: level?.bg ?? "#F5EDE4" }}
                 aria-hidden={!charSrc}
               >
                 {charSrc ? (
@@ -218,17 +263,11 @@ export default function CheckPage() {
             </div>
           </div>
 
-          {/* 3つの状態（縦並び・わかりやすく） */}
           <div className="flex flex-col gap-3">
             <h2 className="text-[14px] font-bold text-t2">あなたの状態</h2>
             {CHECK_TYPE_LIST.map((check) => {
               const meta = STATE_META[check.id];
-              const value =
-                check.id === "phq"
-                  ? LATEST.phq
-                  : check.id === "gad"
-                    ? LATEST.gad
-                    : LATEST.psqi;
+              const value = scores[check.id];
               return (
                 <div
                   key={check.id}
@@ -249,7 +288,7 @@ export default function CheckPage() {
                       className="text-[20px] font-bold leading-none mt-2"
                       style={{ color: check.color }}
                     >
-                      {value}
+                      {ready && typeof value === "number" ? value : "—"}
                       <span className="text-[12px] font-semibold text-t3 ml-1">
                         点
                       </span>

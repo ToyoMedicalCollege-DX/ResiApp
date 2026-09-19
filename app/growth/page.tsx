@@ -1,16 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Heart, Music2 } from "lucide-react";
 import TabBar from "@/components/TabBar";
 import AppHeader from "@/components/AppHeader";
-import { SKILLS, CHECK_HISTORY } from "@/lib/mock-data";
+import { SKILLS, LESSONS_BY_SKILL } from "@/lib/mock-data";
 import {
   BODY_TAG_OPTIONS,
   recentConditionSeries,
   type ConditionLog,
 } from "@/lib/condition-storage";
 import { pressureAlertCopy, type PressureAlert } from "@/lib/weather";
+import {
+  loadCheckScoreHistory,
+  loadLatestCheckScores,
+  type CheckScoreSnapshot,
+  type LatestCheckScores,
+} from "@/lib/check-storage";
+import {
+  countCompletedForSkill,
+  loadLessonCompletions,
+  type LessonCompletionMap,
+} from "@/lib/lesson-completions";
 
 type MetricKey = "phq" | "gad" | "psqi";
 
@@ -51,8 +62,6 @@ const METRICS: {
     icon: "sleep",
   },
 ];
-
-const WEEK_TITLES = ["3週前", "2週前", "1週前", "今週"];
 
 const MOOD_DOT: Record<number, string> = {
   5: "#FBBF24",
@@ -101,6 +110,12 @@ function formatShortDate(isoDate: string) {
   return `${Number(m)}/${Number(d)}`;
 }
 
+function formatChartLabel(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 function tagLabels(log: ConditionLog) {
   return log.bodyTags
     .map((t) => BODY_TAG_OPTIONS.find((o) => o.key === t)?.label)
@@ -108,19 +123,54 @@ function tagLabels(log: ConditionLog) {
     .join("・");
 }
 
+/** 尺度ごとの直近最大4点（新しい順に積んで古い→新しいで返す） */
+function seriesForMetric(
+  history: CheckScoreSnapshot[],
+  key: MetricKey
+): { at: string; value: number }[] {
+  const points: { at: string; value: number }[] = [];
+  for (let i = history.length - 1; i >= 0 && points.length < 4; i--) {
+    const v = history[i][key];
+    if (typeof v === "number") {
+      points.push({ at: history[i].at, value: v });
+    }
+  }
+  return points.reverse();
+}
+
 export default function GrowthPage() {
   const [activeKey, setActiveKey] = useState<MetricKey>("phq");
   const [conditionSeries, setConditionSeries] = useState<
     { date: string; log: ConditionLog | null }[]
   >([]);
+  const [latestScores, setLatestScores] = useState<LatestCheckScores>({});
+  const [history, setHistory] = useState<CheckScoreSnapshot[]>([]);
+  const [completions, setCompletions] = useState<LessonCompletionMap>({});
+  const [ready, setReady] = useState(false);
+
   const active = METRICS.find((m) => m.key === activeKey) ?? METRICS[0];
-  const values = CHECK_HISTORY.map((h) => h[active.key]);
-  const first = values[0] ?? 0;
-  const latest = values[values.length - 1] ?? 0;
-  const improvedBy = first - latest;
+  const chartPoints = useMemo(
+    () => seriesForMetric(history, activeKey),
+    [history, activeKey]
+  );
+  const first = chartPoints[0]?.value;
+  const latest =
+    typeof latestScores[activeKey] === "number"
+      ? latestScores[activeKey]
+      : chartPoints[chartPoints.length - 1]?.value;
+  const improvedBy =
+    typeof first === "number" && typeof latest === "number"
+      ? first - latest
+      : null;
 
   useEffect(() => {
     setConditionSeries(recentConditionSeries(14));
+    setLatestScores(loadLatestCheckScores());
+    setHistory(loadCheckScoreHistory());
+    void loadLessonCompletions().then((map) => {
+      setCompletions(map);
+      setReady(true);
+    });
   }, []);
 
   const logged = conditionSeries.filter((s) => s.log);
@@ -147,10 +197,13 @@ export default function GrowthPage() {
 
           <div className="grid grid-cols-3 gap-2">
             {METRICS.map((metric) => {
-              const latestVal =
-                CHECK_HISTORY[CHECK_HISTORY.length - 1][metric.key];
-              const startVal = CHECK_HISTORY[0][metric.key];
-              const better = startVal - latestVal;
+              const latestVal = latestScores[metric.key];
+              const series = seriesForMetric(history, metric.key);
+              const startVal = series[0]?.value;
+              const better =
+                typeof startVal === "number" && typeof latestVal === "number"
+                  ? startVal - latestVal
+                  : null;
               const selected = metric.key === activeKey;
               return (
                 <button
@@ -177,24 +230,28 @@ export default function GrowthPage() {
                     className="text-[22px] font-bold leading-none"
                     style={{ color: metric.color }}
                   >
-                    {latestVal}
+                    {ready && typeof latestVal === "number" ? latestVal : "—"}
                   </span>
                   <span
                     className="text-[10px] font-semibold"
                     style={{
                       color:
-                        better > 0
-                          ? "#27AE76"
-                          : better < 0
-                            ? "#EF4444"
-                            : "#A89080",
+                        better == null
+                          ? "#A89080"
+                          : better > 0
+                            ? "#27AE76"
+                            : better < 0
+                              ? "#EF4444"
+                              : "#A89080",
                     }}
                   >
-                    {better > 0
-                      ? `↓${better}`
-                      : better < 0
-                        ? `↑${Math.abs(better)}`
-                        : "→0"}
+                    {better == null
+                      ? "未記録"
+                      : better > 0
+                        ? `↓${better}`
+                        : better < 0
+                          ? `↑${Math.abs(better)}`
+                          : "→0"}
                   </span>
                 </button>
               );
@@ -212,62 +269,77 @@ export default function GrowthPage() {
               <div className="min-w-0 flex-1">
                 <p className="text-[16px] font-bold text-t1">{active.label}</p>
                 <p className="text-[12px] text-t2 mt-0.5">
-                  {improvedBy > 0
-                    ? `4週間で ${improvedBy} 点よくなりました`
-                    : improvedBy < 0
-                      ? `4週間で ${Math.abs(improvedBy)} 点増えました`
-                      : "4週間で変化はありません"}
+                  {improvedBy == null
+                    ? "チェックを続けると推移が見られます"
+                    : improvedBy > 0
+                      ? `記録のあいだに ${improvedBy} 点よくなりました`
+                      : improvedBy < 0
+                        ? `記録のあいだに ${Math.abs(improvedBy)} 点増えました`
+                        : "記録のあいだに変化はありません"}
                 </p>
               </div>
             </div>
 
             <div className="bg-white/80 rounded-2xl px-4 py-5">
-              <div className="flex items-end justify-between gap-2 h-44">
-                {values.map((value, i) => {
-                  const isLatest = i === values.length - 1;
-                  const barH = Math.max(16, (value / active.max) * 132);
-                  return (
-                    <div
-                      key={`${active.key}-${i}`}
-                      className="flex flex-col items-center gap-2 flex-1 min-w-0"
-                    >
-                      <span
-                        className="text-[16px] font-bold leading-none"
-                        style={{ color: isLatest ? active.color : "#6B5344" }}
+              {chartPoints.length === 0 ? (
+                <p className="text-[13px] text-t2 text-center py-10">
+                  まだこのチェックの記録がありません
+                </p>
+              ) : (
+                <div className="flex items-end justify-between gap-2 h-44">
+                  {chartPoints.map((point, i) => {
+                    const isLatest = i === chartPoints.length - 1;
+                    const barH = Math.max(16, (point.value / active.max) * 132);
+                    return (
+                      <div
+                        key={`${active.key}-${point.at}-${i}`}
+                        className="flex flex-col items-center gap-2 flex-1 min-w-0"
                       >
-                        {value}
-                      </span>
-                      <div className="w-full flex items-end justify-center h-[132px]">
-                        <div
-                          className="w-[78%] max-w-[52px] rounded-t-2xl transition-all"
+                        <span
+                          className="text-[16px] font-bold leading-none"
                           style={{
-                            height: barH,
-                            backgroundColor: active.color,
-                            opacity: isLatest ? 1 : 0.28,
+                            color: isLatest ? active.color : "#6B5344",
                           }}
-                        />
+                        >
+                          {point.value}
+                        </span>
+                        <div className="w-full flex items-end justify-center h-[132px]">
+                          <div
+                            className="w-[78%] max-w-[52px] rounded-t-2xl transition-all"
+                            style={{
+                              height: barH,
+                              backgroundColor: active.color,
+                              opacity: isLatest ? 1 : 0.28,
+                            }}
+                          />
+                        </div>
+                        <span
+                          className="text-[12px] font-semibold"
+                          style={{
+                            color: isLatest ? active.color : "#A89080",
+                          }}
+                        >
+                          {formatChartLabel(point.at)}
+                        </span>
                       </div>
-                      <span
-                        className="text-[12px] font-semibold"
-                        style={{ color: isLatest ? active.color : "#A89080" }}
-                      >
-                        {WEEK_TITLES[i] ?? `W${i + 1}`}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
-            <div className="flex items-center justify-between text-[12px] font-semibold px-1">
-              <span className="text-t2">
-                はじめ <span style={{ color: active.color }}>{first}点</span>
-              </span>
-              <span className="text-t3">→</span>
-              <span className="text-t2">
-                いま <span style={{ color: active.color }}>{latest}点</span>
-              </span>
-            </div>
+            {typeof first === "number" && typeof latest === "number" && (
+              <div className="flex items-center justify-between text-[12px] font-semibold px-1">
+                <span className="text-t2">
+                  はじめ{" "}
+                  <span style={{ color: active.color }}>{first}点</span>
+                </span>
+                <span className="text-t3">→</span>
+                <span className="text-t2">
+                  いま <span style={{ color: active.color }}>{latest}点</span>
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-3">
@@ -393,7 +465,18 @@ export default function GrowthPage() {
             <h2 className="text-[15px] font-bold text-t1">スキルの進み具合</h2>
             <div className="bg-card rounded-3xl p-4 shadow-sm flex flex-col gap-4">
               {SKILLS.map((skill) => {
-                const ratio = skill.completedLessons / skill.totalLessons;
+                const lessonIds = (LESSONS_BY_SKILL[skill.id] ?? []).map(
+                  (l) => l.id
+                );
+                const completedCount = countCompletedForSkill(
+                  completions,
+                  skill.id,
+                  lessonIds
+                );
+                const ratio =
+                  skill.totalLessons > 0
+                    ? completedCount / skill.totalLessons
+                    : 0;
                 const pct = Math.round(ratio * 100);
                 return (
                   <div key={skill.id} className="flex flex-col gap-1.5">
@@ -405,7 +488,7 @@ export default function GrowthPage() {
                         className="text-[12px] font-bold flex-shrink-0"
                         style={{ color: skill.color }}
                       >
-                        {skill.completedLessons}/{skill.totalLessons}
+                        {completedCount}/{skill.totalLessons}
                       </span>
                     </div>
                     <div className="h-2.5 rounded-full overflow-hidden bg-stroke">

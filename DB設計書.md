@@ -1,477 +1,404 @@
-# DB設計書
-## ResiApp — 学生向けレジリエンス強化アプリ
+# DB設計書（v2）
+## ResiApp — Supabase（PostgreSQL）前提
 
 **作成日：** 2026年7月17日  
-**更新日：** 2026年9月5日  
-**バージョン：** 1.1  
-**備考：** Supabase（PostgreSQL）での実装を前提とした設計。Supabase連携は後工程。  
-**v1.1 追記：** 日常体調記録（`condition_logs`）と天気スナップショット（`weather_snapshots`）— 要件定義書 F07 対応
+**更新日：** 2026年9月19日  
+**バージョン：** 2.3（通知設定を全体ON＋毎日の通知時間のみに）  
+**前提：** 認証は Supabase Auth（`auth.users`）。アプリプロフィールは `public.profiles`（既存マイグレーション準拠）。
 
 ---
 
-## 目次
+## 0. 要件との対応
 
-1. [テーブル一覧](#1-テーブル一覧)
-2. [テーブル詳細](#2-テーブル詳細)
-3. [ER図（テキスト表現）](#3-er図)
-4. [インデックス設計](#4-インデックス設計)
-5. [Row Level Security（RLS）方針](#5-rls方針)
-6. [計算値・派生データの方針](#6-計算値派生データの方針)
-7. [将来拡張の考慮事項](#7-将来拡張の考慮事項)
+| 要件 | 主なテーブル |
+|------|----------------|
+| 新規登録（名前・学科・学籍番号・パスワード） | `auth.users` + `profiles` |
+| 今日の体調（5段階＋日付） | `condition_logs` |
+| 体調相談（本人／返信） | `consult_threads` + `consult_messages` |
+| セルフチェック設問回答・回答時刻 | `check_sessions` + `check_answers` |
+| セルフチェック危機フラグ | `check_sessions.crisis`（**採用**） |
+| トレーニング実施（未／済） | `lesson_completions` |
+| 成長記録 | 上記の集計＋任意で `monthly_score_snapshots` |
+| 天気地域 | `user_preferences` |
+| 相談窓口リンクのクリック数 | `support_link_clicks` |
+| プッシュ通知設定 | `notification_settings`（**採用・将来実装**） |
 
----
-
-## 1. テーブル一覧
-
-| # | テーブル名 | 概要 |
-|---|-----------|------|
-| 1 | `users` | ユーザープロフィール |
-| 2 | `check_sessions` | セルフチェックの実施記録（1回分） |
-| 3 | `check_answers` | セルフチェックの各設問への回答 |
-| 4 | `mood_logs` | 毎日の気分記録（既存。F07では `condition_logs` へ拡張移行可） |
-| 5 | `weather_snapshots` | 取得した天気・気圧のスナップショット【F07】 |
-| 6 | `condition_logs` | 毎日の体調記録（気分＋身体タグ＋メモ）【F07】 |
-| 7 | `lesson_completions` | レッスン完了記録 |
-| 8 | `work_answers` | レッスン内ワーク（テキスト入力）の記録 |
-| 9 | `user_badges` | 獲得バッジの記録 |
-| 10 | `notification_settings` | プッシュ通知設定 |
-| 11 | `user_preferences` | 表示地域などユーザー設定【F07】 |
+パスワードは **DBに平文保存しない**（Supabase Auth がハッシュ管理）。
 
 ---
 
-## 2. テーブル詳細
+## 1. テーブル一覧（推奨）
+
+| # | テーブル | 優先 | 概要 |
+|---|----------|------|------|
+| 1 | `profiles` | 必須・既存 | 名前・学科・学籍番号 |
+| 2 | `condition_logs` | 必須 | 日次の気分（最高〜最低） |
+| 3 | `consult_threads` | 必須 | 体調相談スレッド |
+| 4 | `consult_messages` | 必須 | 相談の各メッセージ |
+| 5 | `check_sessions` | 必須 | チェック1回分のヘッダ・合計点 |
+| 6 | `check_answers` | 必須 | 設問ごとの回答と回答時刻 |
+| 7 | `lesson_completions` | 必須 | レッスン完了（未は行なし） |
+| 8 | `user_preferences` | 必須 | 天気表示地域など |
+| 9 | `support_link_clicks` | 必須 | 相談窓口リンクのクリック |
+| 10 | `weather_snapshots` | 任意 | 気圧・天気の要約キャッシュ |
+| 11 | `work_answers` | 推奨 | トレーニング内ワーク入力 |
+| 12 | `user_badges` | 推奨 | 成長・達成バッジ |
+| 13 | `monthly_score_snapshots` | 任意 | 月次総合スコアの確定値 |
+| 14 | `app_events` | 任意 | 画面閲覧などの簡易分析 |
+| 15 | `notification_settings` | **採用・将来** | プッシュ通知設定 |
+
+マスタ（スキル／レッスン／設問文言）は **アプリコード管理**でよい（頻繁にJOINしない想定）。
 
 ---
 
-### 2.1 `users` — ユーザープロフィール
+## 2. ER概要
+
+```
+auth.users ──1:1── profiles
+                │
+                ├──< condition_logs
+                ├──< consult_threads ──< consult_messages
+                ├──< check_sessions ──< check_answers
+                ├──< lesson_completions
+                ├──< work_answers
+                ├──< user_badges
+                ├──< support_link_clicks
+                ├──< monthly_score_snapshots
+                ├──  user_preferences (1:1)
+                └──  notification_settings (1:1)
+
+weather_snapshots <──（任意）── condition_logs
+```
+
+---
+
+## 3. テーブル詳細
+
+### 3.1 `profiles`（既存）
+
+新規登録の業務データ。パスワードは Auth 側。
+
+| カラム | 型 | 説明 |
+|--------|-----|------|
+| `id` | UUID PK | `auth.users.id` |
+| `student_id` | TEXT UNIQUE | 学籍番号（大文字正規化） |
+| `name` | TEXT | 表示名 |
+| `department` | TEXT | 4学科 CHECK |
+| `school` | TEXT | 任意（現状未使用可） |
+| `grade` | SMALLINT | 任意 |
+| `created_at` / `updated_at` | TIMESTAMPTZ | |
+
+**学科 CHECK：** `歯科技工士学科` / `救急救命士学科` / `鍼灸師学科` / `柔道整復師学科`
+
+---
+
+### 3.2 `condition_logs` — 今日の体調
 
 ```sql
-CREATE TABLE users (
+CREATE TABLE public.condition_logs (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  school_id       TEXT NOT NULL UNIQUE,      -- 学校が発行するID（学籍番号等）
-  nickname        TEXT NOT NULL,             -- 表示名（本名不要）
-  grade           SMALLINT,                  -- 学年（1〜4等）
-  department      TEXT,                      -- 学部・学科
-  level           SMALLINT NOT NULL DEFAULT 1,
-  growth_points   INTEGER  NOT NULL DEFAULT 0,
-  streak_days     SMALLINT NOT NULL DEFAULT 0,
-  last_active_at  TIMESTAMPTZ,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
-
-| カラム | 型 | 説明 |
-|--------|-----|------|
-| `id` | UUID | PK。アプリ内部で使う識別子 |
-| `school_id` | TEXT | 学校システムと紐付けるID。ログイン認証に使用 |
-| `nickname` | TEXT | ホーム画面に表示する名前 |
-| `grade` | SMALLINT | 学年（任意） |
-| `level` | SMALLINT | レジリエンスレベル（1〜） |
-| `growth_points` | INTEGER | レベルアップに使うポイント |
-| `streak_days` | SMALLINT | 連続利用日数 |
-| `last_active_at` | TIMESTAMPTZ | 最終利用日時（streak計算用） |
-
----
-
-### 2.2 `check_sessions` — セルフチェック実施記録
-
-1回のセルフチェック（PHQ-9、GAD-7 等）につき1行。
-
-```sql
-CREATE TABLE check_sessions (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  session_type    TEXT NOT NULL CHECK (session_type IN ('weekly', 'monthly', 'initial')),
-  phq9_score      SMALLINT,         -- PHQ-9合計（0〜27）
-  gad7_score      SMALLINT,         -- GAD-7合計（0〜21）
-  psqi_score      SMALLINT,         -- PSQI簡易版合計（0〜21）
-  resilience_score SMALLINT,        -- レジリエンス指標合計（8〜40）
-  total_score     SMALLINT,         -- 総合スコア（アプリ独自換算）
-  alert_level     TEXT NOT NULL DEFAULT 'normal'
-                  CHECK (alert_level IN ('normal', 'caution', 'warning', 'urgent')),
-  completed_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
-
-| カラム | 型 | 説明 |
-|--------|-----|------|
-| `session_type` | TEXT | `weekly`（週次）/ `monthly`（月次）/ `initial`（初回） |
-| `phq9_score` | SMALLINT | PHQ-9合計点。NULLは未実施 |
-| `alert_level` | TEXT | スコアに基づく警戒レベル。高スコア時に相談窓口へ誘導 |
-
-**判定ロジック（アプリ側またはDB関数で実装）**
-```
-phq9_score >= 20 OR gad7_score >= 15  → urgent
-phq9_score >= 10 OR gad7_score >= 10  → warning
-phq9_score >= 5  OR gad7_score >= 5   → caution
-それ以外                               → normal
-```
-
----
-
-### 2.3 `check_answers` — セルフチェック各設問の回答
-
-```sql
-CREATE TABLE check_answers (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  session_id      UUID NOT NULL REFERENCES check_sessions(id) ON DELETE CASCADE,
-  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  scale           TEXT NOT NULL CHECK (scale IN ('phq9', 'gad7', 'psqi', 'resilience')),
-  question_no     SMALLINT NOT NULL,   -- 設問番号（1〜）
-  answer_value    SMALLINT NOT NULL,   -- 選択値（0〜3 または 1〜5）
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-
-  UNIQUE (session_id, scale, question_no)
-);
-```
-
-| カラム | 型 | 説明 |
-|--------|-----|------|
-| `scale` | TEXT | `phq9` / `gad7` / `psqi` / `resilience` |
-| `question_no` | SMALLINT | 1始まりの設問番号 |
-| `answer_value` | SMALLINT | PHQ-9/GAD-7は0〜3、レジリエンスは1〜5 |
-
----
-
-### 2.4 `mood_logs` — 毎日の気分記録
-
-```sql
-CREATE TABLE mood_logs (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  mood       TEXT NOT NULL CHECK (mood IN ('great', 'good', 'okay', 'bad', 'rough')),
-  mood_score SMALLINT NOT NULL CHECK (mood_score BETWEEN 1 AND 5),
-  note       TEXT,                    -- 任意メモ（将来拡張用）
-  logged_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  date       DATE NOT NULL DEFAULT CURRENT_DATE,  -- 重複チェック用
-
-  UNIQUE (user_id, date)              -- 1日1回のみ記録
-);
-```
-
-| カラム | 型 | 説明 |
-|--------|-----|------|
-| `mood` | TEXT | `great`=5点 / `good`=4点 / `okay`=3点 / `bad`=2点 / `rough`=1点 |
-| `mood_score` | SMALLINT | moodの数値版。グラフ描画に使用 |
-| `date` | DATE | UNIQUE制約で1日1記録を保証 |
-
-> **移行方針（F07）：** 新規実装では `condition_logs` を正とする。既存 `mood_logs` がある場合は気分カラムを移行し、`mood_logs` は後方互換のため当面残してもよい。
-
----
-
-### 2.4b `weather_snapshots` — 天気・気圧スナップショット（F07）
-
-API応答をそのまま個人ログに大量保存せず、**表示・注意判定に必要な要約**を保存する。  
-（`condition_logs` が参照するため、先に定義する。）
-
-```sql
-CREATE TABLE weather_snapshots (
-  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id           UUID REFERENCES users(id) ON DELETE CASCADE, -- NULL可（地域共通キャッシュ運用時）
-  region_key        TEXT NOT NULL,          -- 例: 'osaka' / 'tokyo'
-  fetched_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  weather_code      TEXT,                   -- APIの天気コード or 簡易ラベル
-  temperature_c     NUMERIC(4,1),
-  humidity_pct      SMALLINT,
-  pressure_hpa      NUMERIC(6,1),           -- 現在気圧
-  pressure_delta_hpa NUMERIC(5,1),          -- 直近の変化（例: 24h差）。下降は負
-  pressure_alert    TEXT NOT NULL DEFAULT 'normal'
-                    CHECK (pressure_alert IN ('normal', 'mild', 'caution')),
-  source            TEXT NOT NULL DEFAULT 'open-meteo',
-  raw_summary       JSONB,                  -- デバッグ用の要約JSON（個人情報を含めない）
-  expires_at        TIMESTAMPTZ             -- キャッシュ期限
-);
-```
-
-| カラム | 型 | 説明 |
-|--------|-----|------|
-| `region_key` | TEXT | 表示地域のキー |
-| `pressure_hpa` | NUMERIC | 現在気圧 |
-| `pressure_delta_hpa` | NUMERIC | 変化量（実装で定義した窓：例 24時間） |
-| `pressure_alert` | TEXT | アプリ判定結果 |
-| `expires_at` | TIMESTAMPTZ | これ以降は再取得 |
-
-**pressure_alert 判定（初期案・チューニング前提）**
-```
-|pressure_delta_hpa| < 3     → normal
-3 ≤ |delta| < 6             → mild
-|delta| ≥ 6                 → caution
-（下降をより重視する場合は下降側の閾値を小さくする）
-```
-
----
-
-### 2.4c `condition_logs` — 毎日の体調記録（F07）
-
-```sql
-CREATE TABLE condition_logs (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  date            DATE NOT NULL DEFAULT CURRENT_DATE,
+  user_id         UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  date            DATE NOT NULL DEFAULT (CURRENT_DATE),
   mood            TEXT NOT NULL
-                  CHECK (mood IN ('great', 'good', 'okay', 'bad', 'rough')),
+                    CHECK (mood IN ('great','good','okay','bad','rough')),
   mood_score      SMALLINT NOT NULL CHECK (mood_score BETWEEN 1 AND 5),
-  -- 身体タグ（複数可）。空配列可
-  body_tags       TEXT[] NOT NULL DEFAULT '{}',
-  note            TEXT,
-  -- 記録時点の気圧注意レベル（天気API判定結果のコピー。任意）
   pressure_alert  TEXT
-                  CHECK (pressure_alert IS NULL OR pressure_alert IN ('normal', 'mild', 'caution')),
-  weather_snapshot_id UUID REFERENCES weather_snapshots(id) ON DELETE SET NULL,
+                    CHECK (pressure_alert IS NULL
+                      OR pressure_alert IN ('normal','mild','caution')),
+  weather_snapshot_id UUID REFERENCES public.weather_snapshots(id) ON DELETE SET NULL,
   logged_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-
   UNIQUE (user_id, date)
 );
 ```
 
-| カラム | 型 | 説明 |
-|--------|-----|------|
-| `mood` / `mood_score` | TEXT / SMALLINT | ホームの5段階気分と同一定義 |
-| `body_tags` | TEXT[] | 許可値例：`headache`, `fatigue`, `sleepy`, `stiff_shoulder`, `stomach`, `other` |
-| `note` | TEXT | 任意の一言メモ |
-| `pressure_alert` | TEXT | 記録時の注意レベル（後から振り返り用に保存） |
-| `weather_snapshot_id` | UUID | 紐づく天気スナップショット（任意） |
+| mood | UI | score |
+|------|-----|-------|
+| great | 最高 | 5 |
+| good | 良い | 4 |
+| okay | 普通 | 3 |
+| bad | つらい | 2 |
+| rough | 最低 | 1 |
 
-**body_tags のアプリ側マスタ**
-
-| 値 | 表示 |
-|----|------|
-| `headache` | 頭痛 |
-| `fatigue` | だるさ |
-| `sleepy` | 眠気 |
-| `stiff_shoulder` | 肩こり |
-| `stomach` | 胃の不調 |
-| `other` | その他 |
+成長グラフは `(user_id, date, mood_score)` で足りる。
 
 ---
 
-### 2.4d `user_preferences` — ユーザー設定（F07 含む）
+### 3.3 `consult_threads` / `consult_messages` — 体調相談
 
 ```sql
-CREATE TABLE user_preferences (
-  user_id            UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  weather_region_key TEXT NOT NULL DEFAULT 'osaka',
-  weather_enabled    BOOLEAN NOT NULL DEFAULT true,
-  updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
-
----
-
-### 2.5 `lesson_completions` — レッスン完了記録
-
-```sql
-CREATE TABLE lesson_completions (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  skill_id      TEXT NOT NULL CHECK (skill_id IN ('sk1', 'sk2', 'sk3', 'sk4', 'sk5')),
-  lesson_id     TEXT NOT NULL,        -- 例: 'sk1-l1'
-  completed_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  time_spent_sec INTEGER,             -- 所要時間（秒）
-
-  UNIQUE (user_id, lesson_id)         -- 1ユーザーにつき1レッスン1記録
-);
-```
-
-| カラム | 型 | 説明 |
-|--------|-----|------|
-| `skill_id` | TEXT | スキル識別子。`lesson_id` との整合性確認用 |
-| `lesson_id` | TEXT | `sk1-l1` 形式。マスタはアプリコードで管理 |
-| `time_spent_sec` | INTEGER | エンゲージメント計測用（任意） |
-
----
-
-### 2.6 `work_answers` — ワークのテキスト回答
-
-レッスン内「ワーク」スライドへのテキスト入力を保存。
-
-```sql
-CREATE TABLE work_answers (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  lesson_id    TEXT NOT NULL,         -- 例: 'sk1-l1'
-  slide_id     TEXT NOT NULL,         -- 例: 's6'
-  answer_text  TEXT NOT NULL,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-
-  UNIQUE (user_id, lesson_id, slide_id)  -- 上書き更新を想定
-);
-```
-
----
-
-### 2.7 `user_badges` — 獲得バッジ
-
-```sql
-CREATE TABLE user_badges (
+CREATE TABLE public.consult_threads (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  badge_id    TEXT NOT NULL,          -- 例: 'first-check', 'streak-7'
-  earned_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  user_id     UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  status      TEXT NOT NULL DEFAULT 'open'
+                CHECK (status IN ('open','closed','escalated')),
+  mood_at_start TEXT
+                CHECK (mood_at_start IS NULL
+                  OR mood_at_start IN ('great','good','okay','bad','rough')),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
-  UNIQUE (user_id, badge_id)
+CREATE TABLE public.consult_messages (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  thread_id   UUID NOT NULL REFERENCES public.consult_threads(id) ON DELETE CASCADE,
+  user_id     UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  role        TEXT NOT NULL CHECK (role IN ('user','assistant','system')),
+  content     TEXT NOT NULL,
+  model       TEXT,                 -- 例: gpt-4.1-mini
+  token_in    INTEGER,
+  token_out   INTEGER,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-**バッジ付与トリガーの条件（アプリ側ロジックで判定）**
-
-| `badge_id` | 付与条件 |
-|------------|---------|
-| `first-check` | 初回セルフチェック完了 |
-| `first-lesson` | 初回レッスン完了 |
-| `streak-7` | 7日連続利用 |
-| `streak-30` | 30日連続利用 |
-| `days-30` | 登録から30日経過かつアクティブ |
-| `sk1-complete` | SK01全レッスン完了 |
-| `all-skills` | 全スキル完了 |
-| `check-10` | セルフチェック10回完了 |
+- 1ユーザー複数スレッド可（日ごと／話題ごと）。v1 は「最新 open 1本」でも可。
+- `content` は相談文面のため **RLS 厳格・バックアップ方針を別途**。
 
 ---
 
-### 2.8 `notification_settings` — プッシュ通知設定
+### 3.4 `check_sessions` / `check_answers` — セルフチェック
+
+尺度はアプリ表示上「こころ／やすらぎ／ねむり」。DB キーは `phq` / `gad` / `psqi`。
 
 ```sql
-CREATE TABLE notification_settings (
-  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id             UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
-  push_enabled        BOOLEAN NOT NULL DEFAULT true,
-  daily_reminder      BOOLEAN NOT NULL DEFAULT true,
-  daily_reminder_time TIME NOT NULL DEFAULT '20:00:00',  -- 毎日のリマインダー時刻
-  weekly_check_day    SMALLINT DEFAULT 1                  -- 0=日曜〜6=土曜
-                      CHECK (weekly_check_day BETWEEN 0 AND 6),
-  inactivity_alert    BOOLEAN NOT NULL DEFAULT true,      -- 3日未使用で通知
-  score_alert         BOOLEAN NOT NULL DEFAULT true,      -- 高スコア検出時に通知
+CREATE TABLE public.check_sessions (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  scale           TEXT NOT NULL CHECK (scale IN ('phq','gad','psqi')),
+  period_ym       TEXT,              -- 例 '2026-09'（月次集計用・任意）
+  raw_score       SMALLINT NOT NULL, -- 尺度生点
+  max_score       SMALLINT NOT NULL,
+  band            TEXT,              -- 良好/普通/注意 等（アプリ定義）
+  crisis          BOOLEAN NOT NULL DEFAULT false, -- ★採用: PHQ危機項目など
+  started_at      TIMESTAMPTZ NOT NULL,
+  completed_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  duration_ms     INTEGER,           -- セッション所要（任意）
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+**`crisis`（採用）**
+- 現行アプリ: PHQ の最終設問（自傷・死にたい気持ち）で 1 点以上なら `crisis = true`（`lib/check.ts` の `evaluateCheck`）。
+- `true` のとき: 結果画面でサポート誘導、必要なら通知・監査用クエリに使う。
+- GAD / PSQI では通常 `false`（将来拡張可）。
+
+```sql
+CREATE INDEX idx_check_sessions_crisis
+  ON public.check_sessions (user_id, completed_at DESC)
+  WHERE crisis = true;
+```
+
+```sql
+CREATE TABLE public.check_answers (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id      UUID NOT NULL REFERENCES public.check_sessions(id) ON DELETE CASCADE,
+  user_id         UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  scale           TEXT NOT NULL CHECK (scale IN ('phq','gad','psqi')),
+  question_id     TEXT NOT NULL,     -- 例 'phq3'（アプリ設問ID）
+  question_no     SMALLINT NOT NULL,
+  answer_value    SMALLINT,          -- choice: 0〜3
+  answer_text     TEXT,              -- time入力など（就寝時刻）
+  answered_at     TIMESTAMPTZ NOT NULL DEFAULT now(), -- ★回答時刻
+  latency_ms      INTEGER,           -- 前問からの経過（任意）
+  UNIQUE (session_id, question_id)
+);
+```
+
+**総合スコア（今月）** はアプリで `phq/gad/psqi` の最新セッションから換算して表示。  
+確定保存したい場合は `monthly_score_snapshots` を使う。
+
+```sql
+CREATE TABLE public.monthly_score_snapshots (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  year_month    TEXT NOT NULL,       -- 'YYYY-MM'
+  total_score   SMALLINT NOT NULL CHECK (total_score BETWEEN 0 AND 100),
+  band          TEXT NOT NULL CHECK (band IN ('good','okay','caution')),
+  phq_score     SMALLINT,
+  gad_score     SMALLINT,
+  psqi_score    SMALLINT,
+  computed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (user_id, year_month)
+);
+```
+
+---
+
+### 3.4b `notification_settings` — 通知設定（**採用**）
+
+スキーマは先行作成し、プッシュ配信は後から接続する。
+
+```sql
+CREATE TABLE public.notification_settings (
+  user_id               UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
+  push_enabled          BOOLEAN NOT NULL DEFAULT true,
+  daily_reminder_time   TIME NOT NULL DEFAULT '20:00:00',
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+| カラム | 説明 |
+|--------|------|
+| `push_enabled` | 通知全体のマスタースイッチ |
+| `daily_reminder_time` | 毎日の通知時間 |
+
+**登録時:** `profiles` 作成トリガーまたは初回ログインでデフォルト行を INSERT する想定。
+
+**画面対応（設定）**
+- 通知を受け取る → `push_enabled`
+- 毎日の通知時間 → `daily_reminder_time`
+---
+
+### 3.5 `lesson_completions` — トレーニング未／済
+
+```sql
+CREATE TABLE public.lesson_completions (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  skill_id        TEXT NOT NULL CHECK (skill_id IN ('sk1','sk2','sk3','sk4','sk5')),
+  lesson_id       TEXT NOT NULL,     -- 例 'sk1-l3'
+  status          TEXT NOT NULL DEFAULT 'completed'
+                    CHECK (status IN ('completed')), -- 未実施は行なし
+  completed_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  time_spent_sec  INTEGER,
+  UNIQUE (user_id, lesson_id)
+);
+```
+
+「未」＝行が無い、で十分。進捗率は `COUNT(completed) / レッスン総数`。
+
+---
+
+### 3.6 `user_preferences` — 天気地域
+
+```sql
+CREATE TABLE public.user_preferences (
+  user_id             UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
+  weather_region_key  TEXT NOT NULL DEFAULT 'osaka',
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
----
-
-## 3. ER図
-
-```
-users
-  ├─< check_sessions ──< check_answers
-  ├─< mood_logs                    （既存・互換）
-  ├─< condition_logs ──> weather_snapshots   （F07）
-  ├─< lesson_completions
-  ├─< work_answers
-  ├─< user_badges
-  ├── notification_settings  (1:1)
-  └── user_preferences       (1:1, F07)
-```
-
-**主なリレーション**
-- `users` 1 : N `check_sessions`（1ユーザーが複数回チェック）
-- `check_sessions` 1 : N `check_answers`（1セッションに複数回答）
-- `users` 1 : N `mood_logs`（1日1記録）
-- `users` 1 : N `condition_logs`（1日1体調記録）
-- `condition_logs` N : 1 `weather_snapshots`（任意紐付け）
-- `users` 1 : N `lesson_completions`（1レッスンにつき1記録）
-- `users` 1 : N `work_answers`
-- `users` 1 : N `user_badges`
-- `users` 1 : 1 `notification_settings`
-- `users` 1 : 1 `user_preferences`
+（既存マイグレーションに近い。`weather_enabled` は現状アプリで常時ONなら省略可。）
 
 ---
 
-## 4. インデックス設計
+### 3.7 `support_link_clicks` — 相談窓口クリック
 
 ```sql
--- セルフチェック履歴の時系列取得
-CREATE INDEX idx_check_sessions_user_date
-  ON check_sessions (user_id, completed_at DESC);
+CREATE TABLE public.support_link_clicks (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID REFERENCES public.profiles(id) ON DELETE SET NULL, -- 未ログインも可なら NULL
+  link_key      TEXT NOT NULL,   -- 例 'ssc_web' / 'ssc_tel' / 'clinic_tel'
+  link_label    TEXT,            -- 表示名のスナップショット
+  href          TEXT NOT NULL,
+  group_name    TEXT,            -- 例 'スチューデントサービスセンター'
+  clicked_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  user_agent    TEXT,
+  path          TEXT             -- クリック元画面 '/settings' 等
+);
 
--- 気分ログのカレンダー表示
-CREATE INDEX idx_mood_logs_user_date
-  ON mood_logs (user_id, date DESC);
+CREATE INDEX idx_support_clicks_link_time
+  ON public.support_link_clicks (link_key, clicked_at DESC);
+CREATE INDEX idx_support_clicks_user_time
+  ON public.support_link_clicks (user_id, clicked_at DESC);
+```
 
--- 体調ログ（F07）
-CREATE INDEX idx_condition_logs_user_date
-  ON condition_logs (user_id, date DESC);
+集計は `COUNT(*) GROUP BY link_key`。個人特定を避ける集計ビューを管理者用に切る想定。
 
-CREATE INDEX idx_condition_logs_pressure
-  ON condition_logs (user_id, pressure_alert, date DESC);
+---
 
--- 天気スナップショット（地域＋取得時刻）
-CREATE INDEX idx_weather_snapshots_region_fetched
-  ON weather_snapshots (region_key, fetched_at DESC);
+### 3.8 推奨追加
 
--- レッスン進捗のスキル別集計
-CREATE INDEX idx_lesson_completions_user_skill
-  ON lesson_completions (user_id, skill_id);
+#### `work_answers`（トレーニング・ワーク）
+レッスン内テキスト回答。成長の質的振り返りに有用。
 
--- バッジ一覧の高速取得
-CREATE INDEX idx_user_badges_user
-  ON user_badges (user_id);
+#### `user_badges`
+初回チェック・連続利用など。成長画面のモチベーション用。
 
--- 直近のチェックセッション取得（ホーム画面の「前回からN日」表示用）
-CREATE INDEX idx_check_sessions_latest
-  ON check_sessions (user_id, completed_at DESC)
-  WHERE session_type IN ('weekly', 'initial');
+#### `weather_snapshots`
+地域×取得時刻の要約。`condition_logs.pressure_alert` の根拠を残す。
+
+#### `app_events`（任意・軽量分析）
+```sql
+-- event_name 例: home_tab_weather, check_start, training_open
+user_id, event_name, props JSONB, created_at
 ```
 
 ---
 
-## 5. RLS方針
+## 4. 成長記録に「足りる／足す」もの
 
-Supabase連携時に設定する行レベルセキュリティの基本方針。
+| 成長で見たいこと | 元データ | 追加が必要か |
+|------------------|----------|--------------|
+| 気分の推移 | `condition_logs` | 不要 |
+| 気圧注意日との重なり | `condition_logs.pressure_alert` | 任意で snapshot 紐付け |
+| チェック総合・各尺度推移 | `check_sessions` / snapshots | 月次確定なら snapshot |
+| 学科キャラ帯（良好/普通/注意） | 総合スコア＋`profiles.department` | 不要（アプリ計算） |
+| トレーニング進捗 | `lesson_completions` | 不要 |
+| 連続利用日数 | `condition_logs` or `app_events` | 任意で `profiles.last_active_at` |
+| バッジ | — | `user_badges` 推奨 |
+
+---
+
+## 5. 追加提案（未採用・任意）
+
+1. **同意・免責の受諾ログ** … `consent_logs`  
+2. **管理者用集計ロール** … 個人メッセージは見せず集計のみ  
+3. **データ保持期間ポリシー** … 特に `consult_messages`  
+4. **レート制限** … 相談 API の日次 COUNT  
+5. **`app_events`** … 画面閲覧の簡易分析  
+
+~~危機フラグ / 通知設定は採用済み（§0・§3.4・§3.4b）。~~
+
+---
+
+## 6. RLS 方針（共通）
 
 | テーブル | 方針 |
-|---------|------|
-| `users` | 本人のみ自分の行をSELECT/UPDATE可能 |
-| `check_sessions` | 本人のみ自分の行をSELECT/INSERT可能。UPDATEは原則禁止 |
-| `check_answers` | 本人のみ自分の行をSELECT/INSERT可能 |
-| `mood_logs` | 本人のみ自分の行をSELECT/INSERT可能 |
-| `condition_logs` | 本人のみ自分の行をSELECT/INSERT/UPDATE可能 |
-| `weather_snapshots` | 本人紐付け行は本人のみ。地域共通キャッシュ運用時は読み取り専用ポリシーを別途定義 |
-| `user_preferences` | 本人のみSELECT/UPDATE可能 |
-| `lesson_completions` | 本人のみ自分の行をSELECT/INSERT可能 |
-| `work_answers` | 本人のみ自分の行をSELECT/INSERT/UPDATE可能 |
-| `user_badges` | 本人はSELECTのみ。INSERTはサーバー側関数（Supabase Edge Function）経由 |
-| `notification_settings` | 本人のみSELECT/UPDATE可能 |
-
-> **管理者アクセス**：学校管理者は集計データ（個人を特定しない統計）のみ閲覧可。個別の回答内容は閲覧不可とする（要件定義書 3.3節）。
+|----------|------|
+| ユーザー所有データ全般 | `auth.uid() = user_id` の SELECT/INSERT/UPDATE |
+| `profiles` | 本人のみ（既存ポリシー） |
+| `check_sessions` / `check_answers` | 本人のみ。`crisis` 行も本人スコープ（集計は service_role） |
+| `notification_settings` | 本人のみ SELECT/UPDATE（INSERT は初回デフォルト） |
+| `support_link_clicks` | 本人 INSERT。集計は service_role / 管理ビュー |
+| `consult_messages` | 本人のみ。管理者直読みは原則禁止 |
+| DELETE | 原則アプリから制限（論理削除が必要なら `deleted_at`） |
 
 ---
 
-## 6. 計算値・派生データの方針
+## 7. インデックス（最低限）
 
-DBには**生データのみ保存**し、以下はアプリ側またはDB関数で都度計算する。
-
-| 値 | 算出方法 |
-|----|---------|
-| `streak_days` | `last_active_at`と現在日時を比較してアプリ側で計算。`users`テーブルに保持 |
-| `level` | `growth_points`をしきい値（例：10pt/Lv）で割り算。`users`テーブルに保持 |
-| スキル別完了数 | `lesson_completions`をスキルIDでCOUNT |
-| 今週チェック済みか | `check_sessions`を今週の月曜以降でフィルタ |
-| 前回チェックからの経過日数 | `check_sessions`の最新`completed_at`と現在日時の差分 |
-| 総合スコア推移グラフ | `check_sessions`を時系列でSELECT |
-| 気圧注意レベル | `weather_snapshots.pressure_delta_hpa` からアプリ側で判定し、結果を `pressure_alert` に保存 |
-| 体調×注意日の振り返り | `condition_logs` と `pressure_alert` / 日付で結合して成長画面に表示 |
+```sql
+CREATE INDEX idx_condition_logs_user_date ON condition_logs (user_id, date DESC);
+CREATE INDEX idx_check_sessions_user_scale_time ON check_sessions (user_id, scale, completed_at DESC);
+CREATE INDEX idx_check_answers_session ON check_answers (session_id, question_no);
+CREATE INDEX idx_lesson_completions_user_skill ON lesson_completions (user_id, skill_id);
+CREATE INDEX idx_consult_messages_thread_time ON consult_messages (thread_id, created_at);
+CREATE INDEX idx_support_clicks_link_time ON support_link_clicks (link_key, clicked_at DESC);
+```
 
 ---
 
-## 7. 将来拡張の考慮事項
+## 8. 実装優先度（提案）
 
-| 機能 | 対応テーブル・カラム |
-|------|-------------------|
-| 担任/スクールカウンセラーによる状況確認 | `users`に`counselor_id`を追加。`check_sessions`の`alert_level`をもとに通知 |
-| 学校管理者ダッシュボード | 個人を特定しない集計ビュー（`school_analytics_view`）を別途作成 |
-| 複数学校対応 | `schools`テーブルを追加し、`users.school_id`を外部キーに変更 |
-| LDAPとのSSO連携 | `users`に`external_auth_id`カラムを追加 |
-| レッスンコンテンツのCMS管理 | `skills`・`lessons`テーブルをDBに移行（現在はコードで管理） |
-| Web Push通知の購読情報 | `push_subscriptions`テーブルを追加（endpoint, p256dh, auth） |
-| 端末位置による天気 | `user_preferences`に緯度経度（同意必須）またはGeocoding結果を追加 |
-| 生理周期など高度な体調予報 | 別テーブル。初期スコープ外（要件定義書 F07） |
+| Phase | 内容 |
+|-------|------|
+| P0 | `condition_logs`, `check_sessions`（**含 crisis**）, `check_answers`, `lesson_completions`, `user_preferences` |
+| P0' | `notification_settings` テーブル作成（UI・プッシュ接続は後続） |
+| P1 | `consult_*`, `support_link_clicks` |
+| P2 | `work_answers`, `user_badges`, `monthly_score_snapshots`, `weather_snapshots` |
+| P3 | `app_events`, 同意ログ、プッシュ配信本体 |
 
 ---
 
-*本設計書は要件定義書・参考資料コンテンツ仕様書と合わせて参照してください。*  
-*Supabase連携時はRow Level Security・Edge Functionsの実装詳細を別途作成すること。*
+## 9. 現行コードとの差分メモ
 
-*最終更新：2026年9月5日*
+- いま多くは **localStorage**（体調・天気・最新チェックスコア）。  
+- `profiles` / `user_preferences` 骨子はマイグレーション済。  
+- DB本実装時は「書き込み先を Supabase に切替＋既存端末データの任意マイグレーション」が必要。
+
+---
+
+**次のアクション案：** Supabase で `20260917_profiles.sql` → `20260919_resiapp_core_tables.sql` を順に実行する（SQL Editor 可）。旧 `20260919_check_sessions_and_notifications.sql` / `notification_settings_simplify.sql` はコアSQLに包含済みのため、未適用環境ではコアのみでよい。

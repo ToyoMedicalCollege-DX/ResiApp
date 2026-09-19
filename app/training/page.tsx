@@ -1,19 +1,36 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Zap, Brain, Target, MessageCircle, Moon } from "lucide-react";
 import TabBar from "@/components/TabBar";
 import AppHeader from "@/components/AppHeader";
-import { SKILLS } from "@/lib/mock-data";
+import { SKILLS, LESSONS_BY_SKILL } from "@/lib/mock-data";
+import {
+  countCompletedForSkill,
+  loadLessonCompletions,
+  type LessonCompletionMap,
+} from "@/lib/lesson-completions";
 import type { Skill } from "@/lib/types";
 
 const SKILL_ICONS: Record<string, React.ElementType> = {
-  Zap, Brain, Target, MessageCircle, Moon,
+  Zap,
+  Brain,
+  Target,
+  MessageCircle,
+  Moon,
 };
 
-function SkillCard({ skill }: { skill: Skill }) {
+function SkillCard({
+  skill,
+  completedCount,
+}: {
+  skill: Skill;
+  completedCount: number;
+}) {
   const Icon = SKILL_ICONS[skill.icon] ?? Zap;
-  const progressRatio = skill.totalLessons > 0 ? skill.completedLessons / skill.totalLessons : 0;
+  const progressRatio =
+    skill.totalLessons > 0 ? completedCount / skill.totalLessons : 0;
 
   return (
     <Link href={`/training/${skill.id}`} className="block">
@@ -29,13 +46,15 @@ function SkillCard({ skill }: { skill: Skill }) {
             <span className="text-[14px] font-bold text-t1 leading-tight">
               {skill.name}
             </span>
-            <span className="text-[11px] text-t3 truncate">{skill.description}</span>
+            <span className="text-[11px] text-t3 truncate">
+              {skill.description}
+            </span>
           </div>
           <span
             className="text-[11px] font-semibold flex-shrink-0"
             style={{ color: skill.color }}
           >
-            {skill.completedLessons}/{skill.totalLessons}
+            {completedCount}/{skill.totalLessons}
           </span>
         </div>
 
@@ -48,7 +67,7 @@ function SkillCard({ skill }: { skill: Skill }) {
               className="h-full rounded-full"
               style={{
                 width: `${progressRatio * 100}%`,
-                minWidth: skill.completedLessons > 0 ? 3 : 0,
+                minWidth: completedCount > 0 ? 3 : 0,
                 backgroundColor: skill.color,
               }}
             />
@@ -60,6 +79,12 @@ function SkillCard({ skill }: { skill: Skill }) {
 }
 
 export default function TrainingPage() {
+  const [completions, setCompletions] = useState<LessonCompletionMap>({});
+
+  useEffect(() => {
+    void loadLessonCompletions().then(setCompletions);
+  }, []);
+
   return (
     <div className="h-full flex flex-col overflow-hidden bg-bg">
       <AppHeader />
@@ -70,9 +95,21 @@ export default function TrainingPage() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="flex flex-col gap-2 px-4 py-3">
-          {SKILLS.map((skill) => (
-            <SkillCard key={skill.id} skill={skill} />
-          ))}
+          {SKILLS.map((skill) => {
+            const lessonIds = (LESSONS_BY_SKILL[skill.id] ?? []).map((l) => l.id);
+            const completedCount = countCompletedForSkill(
+              completions,
+              skill.id,
+              lessonIds
+            );
+            return (
+              <SkillCard
+                key={skill.id}
+                skill={skill}
+                completedCount={completedCount}
+              />
+            );
+          })}
         </div>
       </div>
 

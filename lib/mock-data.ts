@@ -1,7 +1,7 @@
 import type { Skill, Lesson, CheckScore, Badge, UserProfile } from "./types";
 
 export const USER: UserProfile = {
-  nickname: "田中さん",
+  nickname: "",
   level: 4,
   streak: 7,
   totalLessons: 20,
@@ -18,7 +18,7 @@ export const SKILLS: Skill[] = [
     bgColor: "#D1FAE5",
     icon: "Zap",
     totalLessons: 10,
-    completedLessons: 8,
+    completedLessons: 0,
   },
   {
     id: "sk2",
@@ -29,7 +29,7 @@ export const SKILLS: Skill[] = [
     bgColor: "#EEF2FF",
     icon: "Brain",
     totalLessons: 12,
-    completedLessons: 6,
+    completedLessons: 0,
   },
   {
     id: "sk3",
@@ -40,7 +40,7 @@ export const SKILLS: Skill[] = [
     bgColor: "#FFF7ED",
     icon: "Target",
     totalLessons: 8,
-    completedLessons: 4,
+    completedLessons: 0,
   },
   {
     id: "sk4",
@@ -97,7 +97,7 @@ export const LESSONS_BY_SKILL: Record<string, Lesson[]> = {
   sk1: [
     {
       id: "sk1-l1", skillId: "sk1", title: "行動活性化とは？",
-      duration: 5, type: "learn", completed: true,
+      duration: 5, type: "learn", completed: false,
       content: `## 行動活性化とは？
 
 「最近、何もやる気が出ない」「楽しいと思えることが減った気がする」
@@ -135,7 +135,7 @@ export const LESSONS_BY_SKILL: Record<string, Lesson[]> = {
     },
     {
       id: "sk1-l2", skillId: "sk1", title: "気分と行動のつながり",
-      duration: 5, type: "learn", completed: true,
+      duration: 5, type: "learn", completed: false,
       content: `## 気分と行動のつながり
 
 前回学んだ「行動すると気分が変わる」という話、もう少し深めてみましょう。
@@ -179,7 +179,7 @@ export const LESSONS_BY_SKILL: Record<string, Lesson[]> = {
     },
     {
       id: "sk1-l3", skillId: "sk1", title: "活動日記をつけてみよう",
-      duration: 7, type: "work", completed: true,
+      duration: 7, type: "work", completed: false,
       content: `## 活動日記をつけてみよう
 
 行動活性化で一番大切なツールが「活動日記」です。
@@ -220,7 +220,7 @@ export const LESSONS_BY_SKILL: Record<string, Lesson[]> = {
     },
     {
       id: "sk1-l4", skillId: "sk1", title: "好きなことリストを作る",
-      duration: 5, type: "work", completed: true,
+      duration: 5, type: "work", completed: false,
       content: `## 好きなことリストを作る
 
 行動活性化でとても大切なステップ、「活動リスト作り」をやってみましょう。
@@ -266,7 +266,7 @@ export const LESSONS_BY_SKILL: Record<string, Lesson[]> = {
     },
     {
       id: "sk1-l5", skillId: "sk1", title: "達成感を増やす方法",
-      duration: 5, type: "learn", completed: true,
+      duration: 5, type: "learn", completed: false,
       content: `## 達成感を増やす方法
 
 気分を上げる活動には2種類あります。それが「楽しさ」と「達成感」です。
@@ -312,7 +312,7 @@ export const LESSONS_BY_SKILL: Record<string, Lesson[]> = {
     },
     {
       id: "sk1-l6", skillId: "sk1", title: "毎日のルーティンを見直す",
-      duration: 7, type: "work", completed: true,
+      duration: 7, type: "work", completed: false,
       content: `## 毎日のルーティンを見直す
 
 行動を増やすために、毎日の「ルーティン（日課）」を整えることがとても効果的です。
@@ -364,7 +364,7 @@ export const LESSONS_BY_SKILL: Record<string, Lesson[]> = {
     },
     {
       id: "sk1-l7", skillId: "sk1", title: "人とのつながりを大切に",
-      duration: 5, type: "learn", completed: true,
+      duration: 5, type: "learn", completed: false,
       content: `## 人とのつながりを大切に
 
 行動活性化で見落としがちだけど、実はとても大切なのが「社会的なつながり」です。
@@ -409,7 +409,7 @@ export const LESSONS_BY_SKILL: Record<string, Lesson[]> = {
     },
     {
       id: "sk1-l8", skillId: "sk1", title: "週間活動計画を立てる",
-      duration: 10, type: "work", completed: true,
+      duration: 10, type: "work", completed: false,
       content: `## 週間活動計画を立てる
 
 ここまで学んできたスキルを、週全体の計画として組み立てましょう。
@@ -559,12 +559,12 @@ L9  落とし穴（やる気待ち・完璧主義）への対処
     },
   ],
   sk2: [
-    { id: "sk2-l1", skillId: "sk2", title: "思考と感情の関係", duration: 5, type: "learn", content: "", completed: true },
-    { id: "sk2-l2", skillId: "sk2", title: "自動思考に気づく", duration: 7, type: "learn", content: "", completed: true },
-    { id: "sk2-l3", skillId: "sk2", title: "認知の歪みを知る①", duration: 8, type: "learn", content: "", completed: true },
-    { id: "sk2-l4", skillId: "sk2", title: "認知の歪みを知る②", duration: 8, type: "learn", content: "", completed: true },
-    { id: "sk2-l5", skillId: "sk2", title: "自分の歪みパターンを見つける", duration: 7, type: "work", content: "", completed: true },
-    { id: "sk2-l6", skillId: "sk2", title: "証拠を集める", duration: 9, type: "work", content: "", completed: true },
+    { id: "sk2-l1", skillId: "sk2", title: "思考と感情の関係", duration: 5, type: "learn", content: "", completed: false },
+    { id: "sk2-l2", skillId: "sk2", title: "自動思考に気づく", duration: 7, type: "learn", content: "", completed: false },
+    { id: "sk2-l3", skillId: "sk2", title: "認知の歪みを知る①", duration: 8, type: "learn", content: "", completed: false },
+    { id: "sk2-l4", skillId: "sk2", title: "認知の歪みを知る②", duration: 8, type: "learn", content: "", completed: false },
+    { id: "sk2-l5", skillId: "sk2", title: "自分の歪みパターンを見つける", duration: 7, type: "work", content: "", completed: false },
+    { id: "sk2-l6", skillId: "sk2", title: "証拠を集める", duration: 9, type: "work", content: "", completed: false },
     { id: "sk2-l7", skillId: "sk2", title: "別の見方を探す", duration: 8, type: "work", content: "", completed: false },
     { id: "sk2-l8", skillId: "sk2", title: "バランスのとれた考えを作る", duration: 9, type: "work", content: "", completed: false },
     { id: "sk2-l9", skillId: "sk2", title: "コアビリーフを探る", duration: 10, type: "work", content: "", completed: false },
@@ -573,10 +573,10 @@ L9  落とし穴（やる気待ち・完璧主義）への対処
     { id: "sk2-l12", skillId: "sk2", title: "まとめと振り返り", duration: 10, type: "review", content: "", completed: false },
   ],
   sk3: [
-    { id: "sk3-l1", skillId: "sk3", title: "問題解決法とは？", duration: 5, type: "learn", content: "", completed: true },
-    { id: "sk3-l2", skillId: "sk3", title: "問題を明確に定義する", duration: 7, type: "work", content: "", completed: true },
-    { id: "sk3-l3", skillId: "sk3", title: "ブレインストーミング", duration: 8, type: "work", content: "", completed: true },
-    { id: "sk3-l4", skillId: "sk3", title: "解決策を評価・選択する", duration: 8, type: "work", content: "", completed: true },
+    { id: "sk3-l1", skillId: "sk3", title: "問題解決法とは？", duration: 5, type: "learn", content: "", completed: false },
+    { id: "sk3-l2", skillId: "sk3", title: "問題を明確に定義する", duration: 7, type: "work", content: "", completed: false },
+    { id: "sk3-l3", skillId: "sk3", title: "ブレインストーミング", duration: 8, type: "work", content: "", completed: false },
+    { id: "sk3-l4", skillId: "sk3", title: "解決策を評価・選択する", duration: 8, type: "work", content: "", completed: false },
     { id: "sk3-l5", skillId: "sk3", title: "アクションプランを立てる", duration: 9, type: "work", content: "", completed: false },
     { id: "sk3-l6", skillId: "sk3", title: "実行して振り返る", duration: 7, type: "review", content: "", completed: false },
     { id: "sk3-l7", skillId: "sk3", title: "コントロールできないことへの向き合い方", duration: 9, type: "learn", content: "", completed: false },
