@@ -33,6 +33,8 @@ import {
 import {
   fetchWeatherSnapshot,
   loadWeatherPrefs,
+  saveWeatherPrefs,
+  nearestWeatherRegion,
   environmentTipsFromWeather,
   weatherVisualKindFromCode,
   TIP_LEVEL_META,
@@ -274,6 +276,20 @@ export default function HomePage() {
   const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(true);
   const [weatherFailed, setWeatherFailed] = useState(false);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsHint, setGpsHint] = useState("");
+
+  const loadWeatherForRegion = async (regionKey: string) => {
+    setWeatherLoading(true);
+    const snap = await fetchWeatherSnapshot(regionKey);
+    if (snap) {
+      setWeather(snap);
+      setWeatherFailed(false);
+    } else {
+      setWeatherFailed(true);
+    }
+    setWeatherLoading(false);
+  };
 
   useEffect(() => {
     const today = getConditionLog(todayKey());
@@ -302,6 +318,38 @@ export default function HomePage() {
       cancelled = true;
     };
   }, []);
+
+  const handleConfirmLocation = () => {
+    if (gpsLoading) return;
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setGpsHint("この端末では位置情報が使えません");
+      return;
+    }
+    setGpsLoading(true);
+    setGpsHint("");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const nearest = nearestWeatherRegion(
+          pos.coords.latitude,
+          pos.coords.longitude
+        );
+        saveWeatherPrefs({ regionKey: nearest.key });
+        setGpsHint(`「${nearest.label}」の天気を表示しています`);
+        setGpsLoading(false);
+        void loadWeatherForRegion(nearest.key);
+        window.setTimeout(() => setGpsHint(""), 2800);
+      },
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) {
+          setGpsHint("位置情報の許可が必要です");
+        } else {
+          setGpsHint("現在地を取得できませんでした");
+        }
+        setGpsLoading(false);
+      },
+      { enableHighAccuracy: false, timeout: 12000, maximumAge: 60_000 }
+    );
+  };
 
   const handleSaveCondition = () => {
     if (!selectedMood) return;
@@ -353,6 +401,21 @@ export default function HomePage() {
             );
           })}
         </div>
+        {homeTab === "weather" && (
+          <div className="mt-1.5 flex flex-col items-center gap-0.5">
+            <button
+              type="button"
+              onClick={handleConfirmLocation}
+              disabled={gpsLoading}
+              className="text-[11px] text-t3 underline underline-offset-2 decoration-stroke disabled:opacity-50"
+            >
+              {gpsLoading ? "現在地を取得中…" : "現在地を確認する"}
+            </button>
+            {gpsHint ? (
+              <p className="text-[10px] font-semibold text-accent">{gpsHint}</p>
+            ) : null}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto">

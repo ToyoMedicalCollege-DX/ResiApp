@@ -110,32 +110,17 @@ function CheckQuestionContent() {
         </p>
 
         <div className="w-full flex flex-col gap-3">
-          {typeId === "phq" || typeId === "gad" || typeId === "psqi" ? (
-            <Link
-              href="/home"
-              className="w-full flex items-center justify-center h-[54px] rounded-[27px] bg-accent text-white font-bold text-[15px]"
-            >
-              ホームで相棒を見る
-            </Link>
-          ) : (
-            <Link
-              href="/check"
-              className="w-full flex items-center justify-center h-[54px] rounded-[27px] bg-accent text-white font-bold text-[15px]"
-            >
-              チェック一覧へ戻る
-            </Link>
-          )}
+          <Link
+            href="/check"
+            className="w-full flex items-center justify-center h-[54px] rounded-[27px] bg-accent text-white font-bold text-[15px]"
+          >
+            スコアと相棒を見る
+          </Link>
           <Link
             href={`/check/question?type=${typeId === "phq" ? "gad" : typeId === "gad" ? "psqi" : "phq"}`}
             className="w-full flex items-center justify-center h-[48px] rounded-[24px] border-2 border-stroke text-t1 font-bold text-[14px]"
           >
             別のチェックも受ける
-          </Link>
-          <Link
-            href="/check"
-            className="w-full flex items-center justify-center h-[44px] text-[13px] font-semibold text-t3"
-          >
-            チェック一覧へ戻る
           </Link>
         </div>
       </div>
