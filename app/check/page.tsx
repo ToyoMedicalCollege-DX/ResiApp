@@ -17,6 +17,7 @@ import {
   computeTotalScore,
   loadCheckScoreHistory,
   loadLatestCheckScores,
+  loadLatestCheckScoresFromSupabase,
   type LatestCheckScores,
 } from "@/lib/check-storage";
 import { createClient } from "@/lib/supabase/client";
@@ -129,6 +130,10 @@ export default function CheckPage() {
   useEffect(() => {
     setScores(loadLatestCheckScores());
     setReady(true);
+
+    void loadLatestCheckScoresFromSupabase().then((fromDb) => {
+      setScores(fromDb);
+    });
 
     const localDept = loadLocalDepartment();
     if (isDepartment(localDept)) setDepartment(localDept);

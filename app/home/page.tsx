@@ -27,7 +27,8 @@ import BriefConsultCard from "@/components/BriefConsultCard";
 import {
   getConditionLog,
   todayKey,
-  upsertConditionLog,
+  saveConditionLog,
+  loadConditionLogsMerged,
   type MoodKey,
 } from "@/lib/condition-storage";
 import {
@@ -271,8 +272,8 @@ function WeatherCard({
 export default function HomePage() {
   const [homeTab, setHomeTab] = useState<"condition" | "weather">("condition");
   const [selectedMood, setSelectedMood] = useState<MoodKey | null>(null);
-  const [note, setNote] = useState("");
   const [savedFlash, setSavedFlash] = useState(false);
+  const [syncHint, setSyncHint] = useState("");
   const [hasTodayLog, setHasTodayLog] = useState(false);
   const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(true);
@@ -296,9 +297,15 @@ export default function HomePage() {
     const today = getConditionLog(todayKey());
     if (today) {
       setSelectedMood(today.mood);
-      setNote(today.note ?? "");
       setHasTodayLog(true);
     }
+    void loadConditionLogsMerged().then((logs) => {
+      const t = logs.find((l) => l.date === todayKey());
+      if (t) {
+        setSelectedMood(t.mood);
+        setHasTodayLog(true);
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -355,16 +362,24 @@ export default function HomePage() {
 
   const handleSaveCondition = () => {
     if (!selectedMood) return;
-    upsertConditionLog({
+    setSyncHint("");
+    void saveConditionLog({
       date: todayKey(),
       mood: selectedMood,
       bodyTags: [],
-      note: note.trim(),
+      note: "",
       pressureAlert: weather?.pressureAlert ?? null,
+    }).then(({ sync }) => {
+      setHasTodayLog(true);
+      setSavedFlash(true);
+      if (!sync.ok) {
+        setSyncHint(sync.error ?? "クラウド同期に失敗しました");
+      }
+      window.setTimeout(() => {
+        setSavedFlash(false);
+        setSyncHint("");
+      }, 2200);
     });
-    setHasTodayLog(true);
-    setSavedFlash(true);
-    window.setTimeout(() => setSavedFlash(false), 1600);
   };
 
   return (
@@ -429,10 +444,15 @@ export default function HomePage() {
                   {savedFlash && (
                     <span className="text-[11px] font-bold text-accent flex items-center gap-1 flex-shrink-0">
                       <Sparkles size={12} />
-                      保存したよ
+                      {syncHint ? "端末に保存" : "保存したよ"}
                     </span>
                   )}
                 </div>
+                {syncHint ? (
+                  <p className="text-[11px] font-semibold text-[#DC2626] -mt-2">
+                    {syncHint}
+                  </p>
+                ) : null}
 
                 <div className="flex justify-between">
                   {MOOD_OPTIONS.map(({ icon: Icon, label, color, key }) => {
@@ -472,18 +492,6 @@ export default function HomePage() {
                     );
                   })}
                 </div>
-
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-[12px] font-semibold text-t2">一言メモ</span>
-                  <textarea
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    maxLength={200}
-                    rows={2}
-                    placeholder="ひとこと残しておく"
-                    className="w-full rounded-2xl border-2 border-stroke bg-bg px-3 py-2.5 text-[13px] text-t1 placeholder:text-t3 focus:outline-none focus:border-accent resize-none"
-                  />
-                </label>
 
                 <button
                   type="button"

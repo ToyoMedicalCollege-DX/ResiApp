@@ -7,6 +7,7 @@ import AppHeader from "@/components/AppHeader";
 import { SKILLS, LESSONS_BY_SKILL } from "@/lib/mock-data";
 import {
   BODY_TAG_OPTIONS,
+  loadConditionLogsMerged,
   recentConditionSeries,
   type ConditionLog,
 } from "@/lib/condition-storage";
@@ -14,6 +15,7 @@ import { pressureAlertCopy, type PressureAlert } from "@/lib/weather";
 import {
   loadCheckScoreHistory,
   loadLatestCheckScores,
+  loadLatestCheckScoresFromSupabase,
   type CheckScoreSnapshot,
   type LatestCheckScores,
 } from "@/lib/check-storage";
@@ -167,6 +169,10 @@ export default function GrowthPage() {
     setConditionSeries(recentConditionSeries(14));
     setLatestScores(loadLatestCheckScores());
     setHistory(loadCheckScoreHistory());
+    void loadLatestCheckScoresFromSupabase().then(setLatestScores);
+    void loadConditionLogsMerged().then((logs) => {
+      setConditionSeries(recentConditionSeries(14, logs));
+    });
     void loadLessonCompletions().then((map) => {
       setCompletions(map);
       setReady(true);

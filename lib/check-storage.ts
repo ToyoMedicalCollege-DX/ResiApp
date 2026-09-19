@@ -1,5 +1,5 @@
 import type { CheckTypeId } from "@/lib/check";
-import { CHECK_TYPES } from "@/lib/check";
+import { CHECK_TYPES, isCheckTypeId } from "@/lib/check";
 import { createClient } from "@/lib/supabase/client";
 
 const LATEST_KEY = "resiapp.check.latestScores.v2";
@@ -85,6 +85,51 @@ export function saveLatestCheckScore(typeId: CheckTypeId, score: number): void {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
 }
 
+/** Supabase の最新セッションから尺度スコアを取得しローカルにも反映 */
+export async function loadLatestCheckScoresFromSupabase(): Promise<LatestCheckScores> {
+  const local = loadLatestCheckScores();
+  try {
+    const supabase = createClient();
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData.user;
+    if (!user) return local;
+
+    const { data, error } = await supabase
+      .from("check_sessions")
+      .select("scale, raw_score, completed_at")
+      .eq("user_id", user.id)
+      .order("completed_at", { ascending: false })
+      .limit(60);
+
+    if (error || !data?.length) return local;
+
+    const next: LatestCheckScores = { ...local };
+    const seen = new Set<string>();
+    for (const row of data) {
+      const scale = row.scale as string;
+      if (!isCheckTypeId(scale) || seen.has(scale)) continue;
+      if (typeof row.raw_score !== "number") continue;
+      seen.add(scale);
+      next[scale] = row.raw_score;
+      if (!next.updatedAt && row.completed_at) {
+        next.updatedAt = String(row.completed_at);
+      }
+    }
+    if (canUseStorage()) {
+      localStorage.setItem(LATEST_KEY, JSON.stringify(next));
+    }
+    return next;
+  } catch {
+    return local;
+  }
+}
+
+function safeAnswerValue(raw: number | string | undefined): number | null {
+  if (raw === undefined || raw === null || raw === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+
 /** チェック完了を check_sessions / check_answers に保存 */
 export async function saveCheckSessionToSupabase(input: {
   typeId: CheckTypeId;
@@ -99,9 +144,18 @@ export async function saveCheckSessionToSupabase(input: {
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError) throw userError;
     const user = userData.user;
-    if (!user) return { ok: true };
+    if (!user) {
+      return { ok: false, error: "ログインが必要です（端末には保存済み）" };
+    }
 
     const check = CHECK_TYPES[input.typeId];
+    if (input.answers.length !== check.questions.length) {
+      return {
+        ok: false,
+        error: `回答数不一致 (${input.answers.length}/${check.questions.length})`,
+      };
+    }
+
     const completedAt = new Date();
     const startedAt = input.startedAt
       ? new Date(input.startedAt)
@@ -127,7 +181,7 @@ export async function saveCheckSessionToSupabase(input: {
 
     if (sessionError || !session) {
       const msg = sessionError?.message ?? "session insert failed";
-      console.warn("check_sessions insert:", msg);
+      console.warn("check_sessions insert:", msg, sessionError);
       return { ok: false, error: msg };
     }
 
@@ -139,7 +193,7 @@ export async function saveCheckSessionToSupabase(input: {
         scale: input.typeId,
         question_id: q.id,
         question_no: i + 1,
-        answer_value: q.kind === "choice" ? Number(raw) : null,
+        answer_value: q.kind === "choice" ? safeAnswerValue(raw) : null,
         answer_text: q.kind === "time" ? String(raw ?? "") : null,
         answered_at: completedAt.toISOString(),
       };
@@ -150,28 +204,33 @@ export async function saveCheckSessionToSupabase(input: {
       .insert(rows);
 
     if (answersError) {
-      console.warn("check_answers insert:", answersError.message);
+      console.warn("check_answers insert:", answersError.message, answersError);
       return { ok: false, error: answersError.message };
     }
 
-    const { awardBadge } = await import("@/lib/badges");
-    const { upsertMonthlyScoreSnapshot } = await import("@/lib/monthly-score");
-    const { trackAppEvent } = await import("@/lib/app-events");
-    void awardBadge("first_check", { scale: input.typeId });
-    const latest = loadLatestCheckScores();
-    if (
-      typeof latest.phq === "number" &&
-      typeof latest.gad === "number" &&
-      typeof latest.psqi === "number"
-    ) {
-      void awardBadge("checks_all_scales");
+    try {
+      const { awardBadge } = await import("@/lib/badges");
+      const { upsertMonthlyScoreSnapshot } = await import("@/lib/monthly-score");
+      const { trackAppEvent } = await import("@/lib/app-events");
+      await awardBadge("first_check", { scale: input.typeId });
+      const latest = loadLatestCheckScores();
+      if (
+        typeof latest.phq === "number" &&
+        typeof latest.gad === "number" &&
+        typeof latest.psqi === "number"
+      ) {
+        await awardBadge("checks_all_scales");
+      }
+      await upsertMonthlyScoreSnapshot(latest);
+      await trackAppEvent("check_complete", {
+        scale: input.typeId,
+        score: input.score,
+        crisis: Boolean(input.crisis),
+      });
+    } catch (sideErr) {
+      // 本体のセッション保存は成功済み
+      console.warn("check post-save hooks:", sideErr);
     }
-    void upsertMonthlyScoreSnapshot(latest);
-    void trackAppEvent("check_complete", {
-      scale: input.typeId,
-      score: input.score,
-      crisis: Boolean(input.crisis),
-    });
 
     return { ok: true };
   } catch (e) {

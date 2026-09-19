@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle } from "lucide-react";
@@ -11,7 +11,11 @@ import { SK3_SLIDES } from "@/lib/slides-sk3";
 import { SK4_SLIDES } from "@/lib/slides-sk4";
 import { SK5_SLIDES } from "@/lib/slides-sk5";
 import LessonSlidePlayer from "@/components/LessonSlidePlayer";
-import { markLessonCompleted } from "@/lib/lesson-completions";
+import {
+  isLessonCompleted,
+  loadLessonCompletions,
+  markLessonCompleted,
+} from "@/lib/lesson-completions";
 import type { SkillId } from "@/lib/types";
 
 const SLIDES_MAP: Record<
@@ -33,15 +37,36 @@ export default function LessonDetailPage({
   const { skillId, lessonId } = use(params);
   const router = useRouter();
   const [completed, setCompleted] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "ok" | "error">(
+    "idle"
+  );
+  const [saveError, setSaveError] = useState("");
 
   const skill = SKILLS.find((s) => s.id === skillId);
   const lessons = LESSONS_BY_SKILL[skillId] ?? [];
   const lesson = lessons.find((l) => l.id === lessonId) ?? TODAY_LESSON;
   const slides = SLIDES_MAP[skillId]?.[lessonId];
 
+  useEffect(() => {
+    void loadLessonCompletions().then((map) => {
+      if (isLessonCompleted(map, lessonId)) {
+        setCompleted(true);
+        setSaveStatus("ok");
+      }
+    });
+  }, [lessonId]);
+
   const handleComplete = () => {
-    void markLessonCompleted(skillId as SkillId, lessonId);
     setCompleted(true);
+    setSaveStatus("saving");
+    setSaveError("");
+    void markLessonCompleted(skillId as SkillId, lessonId).then((result) => {
+      if (result.ok) setSaveStatus("ok");
+      else {
+        setSaveStatus("error");
+        setSaveError(result.error ?? "クラウド保存に失敗しました");
+      }
+    });
   };
 
   if (!skill)
@@ -67,6 +92,17 @@ export default function LessonDetailPage({
             <br />
             この調子で続けていこう！
           </p>
+          {saveStatus === "saving" && (
+            <p className="text-[12px] font-semibold text-t3">進捗を保存しています…</p>
+          )}
+          {saveStatus === "ok" && (
+            <p className="text-[12px] font-semibold text-accent">進捗を保存しました</p>
+          )}
+          {saveStatus === "error" && (
+            <p className="text-[12px] font-semibold text-[#DC2626]">
+              端末には保存しました（{saveError}）
+            </p>
+          )}
         </div>
         <div className="flex flex-col gap-3 w-full">
           <Link

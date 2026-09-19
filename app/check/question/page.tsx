@@ -25,6 +25,13 @@ function CheckQuestionContent() {
   const [timeValue, setTimeValue] = useState("");
   const [done, setDone] = useState(false);
   const [startedAt] = useState(() => new Date().toISOString());
+  const [finalAnswers, setFinalAnswers] = useState<(number | string)[] | null>(
+    null
+  );
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "ok" | "error">(
+    "idle"
+  );
+  const [saveError, setSaveError] = useState("");
 
   const question = check.questions[current];
   const total = check.questions.length;
@@ -40,14 +47,19 @@ function CheckQuestionContent() {
 
   const handleNext = () => {
     if (!canProceed) return;
-    const value = question.kind === "choice" ? (selected as number) : timeValue.trim();
+    const value =
+      question.kind === "choice" ? (selected as number) : timeValue.trim();
     const newAnswers = [...answers, value];
     setAnswers(newAnswers);
     setSelected(null);
     setTimeValue("");
     if (current + 1 >= total) {
       const { score, level, crisis } = evaluateCheck(typeId, newAnswers);
+      setFinalAnswers(newAnswers);
       saveLatestCheckScore(typeId, score);
+      setSaveStatus("saving");
+      setSaveError("");
+      setDone(true);
       void saveCheckSessionToSupabase({
         typeId,
         answers: newAnswers,
@@ -55,15 +67,22 @@ function CheckQuestionContent() {
         band: level.label,
         crisis,
         startedAt,
+      }).then((result) => {
+        if (result.ok) {
+          setSaveStatus("ok");
+        } else {
+          setSaveStatus("error");
+          setSaveError(result.error ?? "クラウド保存に失敗しました");
+        }
       });
-      setDone(true);
     } else {
       setCurrent(current + 1);
     }
   };
 
   if (done) {
-    const { score, level, crisis } = evaluateCheck(typeId, answers);
+    const scoredAnswers = finalAnswers ?? answers;
+    const { score, level, crisis } = evaluateCheck(typeId, scoredAnswers);
 
     return (
       <div className="h-full flex flex-col items-center justify-center px-8 gap-5 bg-bg overflow-y-auto py-8">
@@ -117,6 +136,22 @@ function CheckQuestionContent() {
         <p className="text-[11px] text-t3 text-center leading-relaxed">
           本チェックは医療診断ではありません。参考としてご利用ください。
         </p>
+
+        {saveStatus === "saving" && (
+          <p className="text-[12px] font-semibold text-t3 text-center">
+            結果を保存しています…
+          </p>
+        )}
+        {saveStatus === "ok" && (
+          <p className="text-[12px] font-semibold text-accent text-center">
+            結果を保存しました
+          </p>
+        )}
+        {saveStatus === "error" && (
+          <p className="text-[12px] font-semibold text-[#DC2626] text-center px-2">
+            端末には保存しました（クラウド: {saveError}）
+          </p>
+        )}
 
         <div className="w-full flex flex-col gap-3">
           <Link
