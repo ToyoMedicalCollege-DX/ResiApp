@@ -39,10 +39,18 @@ export async function GET() {
       "";
 
     let plainName = "";
+    let decryptError: string | undefined;
     try {
       plainName = storedName ? decryptProfileName(storedName) : "";
+      // 復号結果がまだ暗号文なら失敗扱い
+      if (plainName && isEncryptedProfileName(plainName)) {
+        plainName = "";
+        decryptError = "名前の復号結果が不正です";
+      }
     } catch (e) {
-      console.warn("name decrypt failed:", e);
+      const msg = e instanceof Error ? e.message : "decrypt failed";
+      console.warn("name decrypt failed:", msg);
+      decryptError = msg;
       plainName = "";
     }
 
@@ -62,6 +70,7 @@ export async function GET() {
       department,
       studentId,
       nameEncrypted: isEncryptedProfileName(storedName),
+      decryptError,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "取得に失敗しました";

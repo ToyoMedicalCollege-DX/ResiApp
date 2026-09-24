@@ -38,6 +38,7 @@ import {
   type NotificationSettings,
 } from "@/lib/notification-settings";
 import { logSupportLinkClick } from "@/lib/support-clicks";
+import { fetchDecryptedProfile } from "@/lib/profile-client";
 
 const PROFILE_KEY = "resiapp.settings.profile";
 
@@ -176,57 +177,49 @@ export default function SettingsPage() {
       }
 
       setStudentIdLabel(studentIdFromUser(data.user));
-      // 暗号名は API で復号して表示
       try {
-        const res = await fetch("/api/profile");
-        if (res.ok) {
-          const body = (await res.json()) as {
-            name?: string;
-            department?: string;
-            studentId?: string;
-          };
-          if (body.name) {
-            setNameInput(body.name);
-            setDisplayName(withSan(body.name));
-            setInitial(body.name.slice(0, 1) || "？");
-            try {
-              localStorage.setItem(
-                PROFILE_KEY,
-                JSON.stringify({
-                  name: body.name,
-                  department: body.department ?? profile.department,
-                })
-              );
-            } catch {
-              // ignore
-            }
-          } else {
-            const shown = displayNameFromUser(data.user);
-            setDisplayName(shown);
-            setInitial(initialFromUser(data.user));
-            setNameInput(stripSan(shown));
+        const body = await fetchDecryptedProfile();
+        if (body?.name) {
+          setNameInput(body.name);
+          setDisplayName(withSan(body.name));
+          setInitial(body.name.slice(0, 1) || "？");
+          try {
+            localStorage.setItem(
+              PROFILE_KEY,
+              JSON.stringify({
+                name: body.name,
+                department: body.department || profile.department,
+              })
+            );
+          } catch {
+            // ignore
           }
-          if (body.department) setDepartment(body.department);
-          else {
-            const dept = departmentFromUser(data.user);
-            if (dept) setDepartment(dept);
-            else if (profile.department) setDepartment(profile.department);
-          }
-          if (body.studentId) setStudentIdLabel(body.studentId);
         } else {
           const shown = displayNameFromUser(data.user);
           setDisplayName(shown);
           setInitial(initialFromUser(data.user));
           setNameInput(stripSan(shown));
+          if (body?.decryptError) {
+            setSaveError(
+              "名前の復号に失敗しました。Vercel の PROFILE_NAME_ENCRYPTION_KEY が .env.local と同じか確認してください。"
+            );
+          }
+        }
+        if (body?.department) setDepartment(body.department);
+        else {
           const dept = departmentFromUser(data.user);
           if (dept) setDepartment(dept);
           else if (profile.department) setDepartment(profile.department);
         }
+        if (body?.studentId) setStudentIdLabel(body.studentId);
       } catch {
         const shown = displayNameFromUser(data.user);
         setDisplayName(shown);
         setInitial(initialFromUser(data.user));
         setNameInput(stripSan(shown));
+        setSaveError(
+          "プロフィールの読み込みに失敗しました。再ログインするか、暗号化キー設定を確認してください。"
+        );
       }
       setProfileReady(true);
     })();

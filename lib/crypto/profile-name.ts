@@ -17,16 +17,18 @@ const ALGO = "aes-256-gcm";
 const IV_LEN = 12;
 
 function getKey(): Buffer {
-  const raw = process.env.PROFILE_NAME_ENCRYPTION_KEY?.trim();
+  let raw = process.env.PROFILE_NAME_ENCRYPTION_KEY?.trim() ?? "";
+  // Vercel 貼り付け時の引用符・BOM を除去
+  raw = raw.replace(/^\uFEFF/, "").replace(/^["']|["']$/g, "").trim();
   if (!raw) {
     throw new Error(
-      "PROFILE_NAME_ENCRYPTION_KEY が未設定です。.env.local に openssl rand -base64 32 の値を設定してください。"
+      "PROFILE_NAME_ENCRYPTION_KEY が未設定です。.env.local / Vercel に openssl rand -base64 32 の値を設定してください。"
     );
   }
   const key = Buffer.from(raw, "base64");
   if (key.length !== 32) {
     throw new Error(
-      "PROFILE_NAME_ENCRYPTION_KEY は Base64 でデコード後 32 バイト（AES-256）である必要があります。"
+      `PROFILE_NAME_ENCRYPTION_KEY は Base64 でデコード後 32 バイト必要です（現在 ${key.length} バイト）。ローカルの .env.local と同じ値を Vercel に設定し、再デプロイしてください。`
     );
   }
   return key;

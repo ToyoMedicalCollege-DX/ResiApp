@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Settings } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { displayNameFromUser, withSan } from "@/lib/auth-display";
+import { fetchDecryptedProfile } from "@/lib/profile-client";
 
 interface AppHeaderProps {
   showBadge?: boolean;
@@ -31,18 +32,35 @@ export default function AppHeader({ showBadge = false }: AppHeaderProps) {
     void (async () => {
       const { data } = await supabase.auth.getUser();
       if (!data.user) return;
+
       try {
-        const res = await fetch("/api/profile");
-        if (res.ok) {
-          const body = (await res.json()) as { name?: string };
-          if (body.name) {
-            setDisplayName(withSan(body.name));
-            return;
+        const profile = await fetchDecryptedProfile();
+        if (profile?.name) {
+          setDisplayName(withSan(profile.name));
+          try {
+            const prev = localStorage.getItem("resiapp.settings.profile");
+            const parsed = prev ? (JSON.parse(prev) as Record<string, string>) : {};
+            localStorage.setItem(
+              "resiapp.settings.profile",
+              JSON.stringify({
+                ...parsed,
+                name: profile.name,
+                department: profile.department || parsed.department || "",
+              })
+            );
+          } catch {
+            // ignore
           }
+          return;
         }
-      } catch {
-        // fall through
+        if (profile?.decryptError) {
+          console.warn("profile decrypt:", profile.decryptError);
+        }
+      } catch (e) {
+        console.warn("profile fetch:", e);
       }
+
+      // 復号できないときは学籍番号表示に落とす（暗号文は出さない）
       setDisplayName(displayNameFromUser(data.user));
     })();
   }, []);
