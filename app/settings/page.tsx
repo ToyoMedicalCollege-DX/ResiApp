@@ -21,6 +21,7 @@ import {
   displayNameFromUser,
   initialFromUser,
   studentIdFromUser,
+  withSan,
 } from "@/lib/auth-display";
 import {
   WEATHER_REGIONS,
@@ -161,12 +162,11 @@ export default function SettingsPage() {
     void loadNotificationSettings().then(setNotif);
 
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
+    void (async () => {
+      const { data } = await supabase.auth.getUser();
       if (!data.user) {
         if (profile.name) {
-          const shown = profile.name.endsWith("さん")
-            ? profile.name
-            : `${stripSan(profile.name)}さん`;
+          const shown = withSan(profile.name);
           setDisplayName(shown);
           setInitial(stripSan(shown).slice(0, 1) || "？");
           setNameInput(stripSan(profile.name));
@@ -174,16 +174,62 @@ export default function SettingsPage() {
         setProfileReady(true);
         return;
       }
-      const shown = displayNameFromUser(data.user);
-      setDisplayName(shown);
-      setInitial(initialFromUser(data.user));
+
       setStudentIdLabel(studentIdFromUser(data.user));
-      setNameInput(stripSan(shown));
-      const dept = departmentFromUser(data.user);
-      if (dept) setDepartment(dept);
-      else if (profile.department) setDepartment(profile.department);
+      // 暗号名は API で復号して表示
+      try {
+        const res = await fetch("/api/profile");
+        if (res.ok) {
+          const body = (await res.json()) as {
+            name?: string;
+            department?: string;
+            studentId?: string;
+          };
+          if (body.name) {
+            setNameInput(body.name);
+            setDisplayName(withSan(body.name));
+            setInitial(body.name.slice(0, 1) || "？");
+            try {
+              localStorage.setItem(
+                PROFILE_KEY,
+                JSON.stringify({
+                  name: body.name,
+                  department: body.department ?? profile.department,
+                })
+              );
+            } catch {
+              // ignore
+            }
+          } else {
+            const shown = displayNameFromUser(data.user);
+            setDisplayName(shown);
+            setInitial(initialFromUser(data.user));
+            setNameInput(stripSan(shown));
+          }
+          if (body.department) setDepartment(body.department);
+          else {
+            const dept = departmentFromUser(data.user);
+            if (dept) setDepartment(dept);
+            else if (profile.department) setDepartment(profile.department);
+          }
+          if (body.studentId) setStudentIdLabel(body.studentId);
+        } else {
+          const shown = displayNameFromUser(data.user);
+          setDisplayName(shown);
+          setInitial(initialFromUser(data.user));
+          setNameInput(stripSan(shown));
+          const dept = departmentFromUser(data.user);
+          if (dept) setDepartment(dept);
+          else if (profile.department) setDepartment(profile.department);
+        }
+      } catch {
+        const shown = displayNameFromUser(data.user);
+        setDisplayName(shown);
+        setInitial(initialFromUser(data.user));
+        setNameInput(stripSan(shown));
+      }
       setProfileReady(true);
-    });
+    })();
   }, []);
 
   useEffect(() => {
@@ -223,60 +269,21 @@ export default function SettingsPage() {
       if (userError) throw userError;
       const user = userData.user;
       if (user) {
-        const { error: metaError } = await supabase.auth.updateUser({
-          data: { name: trimmedName, department: trimmedDept },
+        const res = await fetch("/api/profile", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: trimmedName,
+            department: trimmedDept,
+          }),
         });
-        if (metaError) throw metaError;
-
-        const { data: updated, error: profileError } = await supabase
-          .from("profiles")
-          .update({
-            name: trimmedName,
-            department: trimmedDept,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", user.id)
-          .select("id")
-          .maybeSingle();
-
-        if (profileError) {
-          console.warn("profiles update:", profileError.message);
-          throw new Error(`プロフィール保存に失敗: ${profileError.message}`);
+        const payload = (await res.json()) as { error?: string };
+        if (!res.ok) {
+          throw new Error(payload.error || "プロフィール保存に失敗しました");
         }
 
-        if (!updated) {
-          const sid =
-            studentIdFromUser(user) ||
-            String(user.user_metadata?.student_id ?? "")
-              .toUpperCase()
-              .trim();
-          if (!sid) {
-            throw new Error(
-              "プロフィール行がありません。一度ログアウトして再ログインするか、新規登録し直してください。"
-            );
-          }
-          const { error: insertError } = await supabase.from("profiles").insert({
-            id: user.id,
-            name: trimmedName,
-            department: trimmedDept,
-            student_id: sid,
-          });
-          if (insertError) {
-            console.warn("profiles insert:", insertError.message);
-            throw new Error(`プロフィール作成に失敗: ${insertError.message}`);
-          }
-        }
-
-        const { data: refreshed } = await supabase.auth.getUser();
-        if (refreshed.user) {
-          setDisplayName(displayNameFromUser(refreshed.user));
-          setInitial(initialFromUser(refreshed.user));
-        } else {
-          setDisplayName(
-            trimmedName.endsWith("さん") ? trimmedName : `${trimmedName}さん`
-          );
-          setInitial(trimmedName.slice(0, 1) || "？");
-        }
+        setDisplayName(withSan(trimmedName));
+        setInitial(trimmedName.slice(0, 1) || "？");
       } else {
         setDisplayName(
           trimmedName.endsWith("さん") ? trimmedName : `${trimmedName}さん`

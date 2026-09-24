@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Settings } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { displayNameFromUser } from "@/lib/auth-display";
+import { displayNameFromUser, withSan } from "@/lib/auth-display";
 
 interface AppHeaderProps {
   showBadge?: boolean;
@@ -28,9 +28,23 @@ export default function AppHeader({ showBadge = false }: AppHeaderProps) {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) setDisplayName(displayNameFromUser(data.user));
-    });
+    void (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (!data.user) return;
+      try {
+        const res = await fetch("/api/profile");
+        if (res.ok) {
+          const body = (await res.json()) as { name?: string };
+          if (body.name) {
+            setDisplayName(withSan(body.name));
+            return;
+          }
+        }
+      } catch {
+        // fall through
+      }
+      setDisplayName(displayNameFromUser(data.user));
+    })();
   }, []);
 
   return (

@@ -82,7 +82,7 @@ weather_snapshots <──（任意）── condition_logs
 |--------|-----|------|
 | `id` | UUID PK | `auth.users.id` |
 | `student_id` | TEXT UNIQUE | 学籍番号（大文字正規化） |
-| `name` | TEXT | 表示名 |
+| `name` | TEXT | 表示名（**アプリ層 AES-256-GCM 暗号文** `enc:v1:…`。レガシー平文も可） |
 | `department` | TEXT | 4学科 CHECK |
 | `school` | TEXT | 任意（現状未使用可） |
 | `grade` | SMALLINT | 任意 |

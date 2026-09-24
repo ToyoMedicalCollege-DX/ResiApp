@@ -14,22 +14,6 @@ import { DEPARTMENTS, isDepartment } from "@/lib/departments";
 
 const PROFILE_KEY = "resiapp.settings.profile";
 
-function mapSignUpError(message: string): string {
-  const m = message.toLowerCase();
-  if (m.includes("already registered") || m.includes("already been registered"))
-    return "この学籍番号はすでに登録されています";
-  if (m.includes("password")) return "パスワードは6文字以上にしてください";
-  if (
-    m.includes("rate limit") ||
-    m.includes("security purposes") ||
-    (m.includes("after") && m.includes("second")) ||
-    (m.includes("email") && m.includes("rate"))
-  ) {
-    return "登録の試行が多すぎます（メール送信制限）。Authentication → Providers → Email で「Confirm email」をOFFにし、数分〜最大1時間ほど待ってから再度お試しください。";
-  }
-  return message || "登録に失敗しました";
-}
-
 export default function SignUpPage() {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -65,21 +49,26 @@ export default function SignUpPage() {
         setLoading(false);
         return;
       }
-      const supabase = createClient();
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email: studentIdToEmail(id),
-        password,
-        options: {
-          data: {
-            name: trimmedName,
-            nickname: trimmedName, // 後方互換
-            department: trimmedDept,
-            student_id: id,
-          },
-        },
+
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: trimmedName,
+          department: trimmedDept,
+          studentId: id,
+          password,
+        }),
       });
-      if (signUpError) {
-        setError(mapSignUpError(signUpError.message));
+      const payload = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        email?: string;
+        displayName?: string;
+        department?: string;
+      };
+      if (!res.ok || !payload.ok) {
+        setError(payload.error || "登録に失敗しました");
         setLoading(false);
         return;
       }
@@ -87,22 +76,30 @@ export default function SignUpPage() {
       try {
         localStorage.setItem(
           PROFILE_KEY,
-          JSON.stringify({ name: trimmedName, department: trimmedDept })
+          JSON.stringify({
+            name: payload.displayName ?? trimmedName,
+            department: payload.department ?? trimmedDept,
+          })
         );
       } catch {
         // ignore
       }
 
-      if (data.session) {
-        router.replace("/home");
-        router.refresh();
+      const supabase = createClient();
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: payload.email ?? studentIdToEmail(id),
+        password,
+      });
+      if (signInError) {
+        setInfo(
+          "登録は完了しました。ログイン画面から学籍番号でサインインしてください。"
+        );
+        setLoading(false);
         return;
       }
 
-      setInfo(
-        "登録を受け付けました。すぐログインできない場合は、Supabase の「Confirm email」をオフにするか、管理者に連絡してください。"
-      );
-      setLoading(false);
+      router.replace("/home");
+      router.refresh();
     } catch {
       setError("通信エラーが発生しました");
       setLoading(false);
@@ -120,7 +117,7 @@ export default function SignUpPage() {
 
       <div className="flex-1 overflow-y-auto px-5 pb-8">
         <p className="text-[14px] text-t2 mb-6 leading-relaxed">
-          名前・所属学科・学籍番号を登録します。
+          名前・所属学科・学籍番号を登録します。名前はサーバーで暗号化して保存します。
         </p>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
