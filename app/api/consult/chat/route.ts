@@ -1,21 +1,17 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import {
+  buildConsultSystemPrompt,
+  suggestionFromKind,
+  type ConsultSuggestion,
+} from "@/lib/consult-routing";
 
 export const runtime = "nodejs";
 
 const MODEL = "gpt-4o-mini";
-const MAX_TOKENS = 300;
+const MAX_TOKENS = 350;
 const DAILY_LIMIT = 5;
 const HISTORY_LIMIT = 8;
-
-const SYSTEM_PROMPT = `あなたは専門学校向けセルフケアアプリ「ResiApp」の体調相談アシスタントです。
-ルール:
-- 日本語で、短く・やさしく・具体的に返す（2〜5文程度）
-- 医療診断・薬の指示・疾患名の断定はしない
-- 共感したうえで、今日できる小さなセルフケアを1つ提案する
-- つらさが強い・危険を感じる内容なら、設定の「相談窓口」や周囲の大人・専門機関への相談を促す
-- 絵文字は使いすぎない（0〜1個まで）`;
-
 type MoodKey = "great" | "good" | "okay" | "bad" | "rough";
 
 function startOfTodayJstIso(): string {
@@ -93,7 +89,12 @@ async function callOpenAI(input: {
   mood: MoodKey | null;
   history: { role: "user" | "assistant"; content: string }[];
   userText: string;
-}): Promise<{ content: string; tokenIn?: number; tokenOut?: number }> {
+}): Promise<{
+  content: string;
+  suggestion: ConsultSuggestion | null;
+  tokenIn?: number;
+  tokenOut?: number;
+}> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     throw new Error(
@@ -106,8 +107,9 @@ async function callOpenAI(input: {
       ? `（参考：いまの気分キーは ${input.mood}）`
       : "";
 
+  // history の assistant 側は reply 本文だけ（過去の JSON は送らない）
   const messages = [
-    { role: "system" as const, content: SYSTEM_PROMPT },
+    { role: "system" as const, content: buildConsultSystemPrompt() },
     ...input.history,
     {
       role: "user" as const,
@@ -125,7 +127,8 @@ async function callOpenAI(input: {
       model: MODEL,
       messages,
       max_tokens: MAX_TOKENS,
-      temperature: 0.7,
+      temperature: 0.6,
+      response_format: { type: "json_object" },
     }),
   });
 
@@ -139,16 +142,55 @@ async function callOpenAI(input: {
     throw new Error(data.error?.message || `OpenAI エラー (${res.status})`);
   }
 
-  const content = data.choices?.[0]?.message?.content?.trim();
-  if (!content) {
+  const raw = data.choices?.[0]?.message?.content?.trim();
+  if (!raw) {
     throw new Error("AIからの返信が空でした");
   }
 
+  let reply = raw;
+  let suggestion: ConsultSuggestion | null = null;
+  try {
+    const parsed = JSON.parse(raw) as {
+      reply?: string;
+      suggest?: string;
+      reason?: string;
+    };
+    reply = String(parsed.reply ?? "").trim() || raw;
+    suggestion = suggestionFromKind(parsed.suggest, parsed.reason);
+  } catch {
+    // JSON でなくても本文はそのまま使う
+    suggestion = null;
+  }
+
+  // 危機ワードはモデル任せにしつつ、サーバー側でも support を優先
+  if (looksLikeCrisis(input.userText)) {
+    suggestion = suggestionFromKind(
+      "support",
+      "つらい内容のため相談窓口を案内"
+    );
+  }
+
   return {
-    content,
+    content: reply,
+    suggestion,
     tokenIn: data.usage?.prompt_tokens,
     tokenOut: data.usage?.completion_tokens,
   };
+}
+
+function looksLikeCrisis(text: string): boolean {
+  const t = text.toLowerCase();
+  const keys = [
+    "死にたい",
+    "消えたい",
+    "自殺",
+    "自傷",
+    "生きていけない",
+    "殺して",
+    "終わりにしたい",
+    "いなくなりたい",
+  ];
+  return keys.some((k) => t.includes(k));
 }
 
 export async function POST(request: Request) {
@@ -259,6 +301,7 @@ export async function POST(request: Request) {
       void trackAppEvent("consult_send", {
         moodKey: mood,
         remaining,
+        suggest: ai.suggestion?.kind ?? "none",
       });
     } catch {
       // ignore
@@ -271,7 +314,9 @@ export async function POST(request: Request) {
         role: "assistant" as const,
         content: ai.content,
         createdAt: assistantRow?.created_at ?? new Date().toISOString(),
+        suggestion: ai.suggestion,
       },
+      suggestion: ai.suggestion,
       usedToday: usedAfter,
       dailyLimit: DAILY_LIMIT,
       remaining,

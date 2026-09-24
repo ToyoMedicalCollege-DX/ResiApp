@@ -2,16 +2,22 @@
  * 体調相談クライアント。返信生成は /api/consult/chat（gpt-4o-mini）側。
  */
 
+import type { ConsultSuggestion } from "@/lib/consult-routing";
+
+export type { ConsultSuggestion };
+
 export type BriefConsultMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  suggestion?: ConsultSuggestion | null;
 };
 
 export type BriefConsultReply = {
   ok: boolean;
   message?: BriefConsultMessage;
+  suggestion?: ConsultSuggestion | null;
   error?: string;
   limitReached?: boolean;
   usedToday?: number;
@@ -77,9 +83,17 @@ export async function sendBriefConsult(
       };
     }
 
+    const message = body.message
+      ? {
+          ...body.message,
+          suggestion: body.message.suggestion ?? body.suggestion ?? null,
+        }
+      : undefined;
+
     return {
       ok: true,
-      message: body.message,
+      message,
+      suggestion: body.suggestion ?? message?.suggestion ?? null,
       usedToday: body.usedToday,
       dailyLimit: body.dailyLimit,
       remaining: body.remaining,

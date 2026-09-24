@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Send } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Send } from "lucide-react";
 import {
   fetchConsultQuota,
   sendBriefConsult,
@@ -16,7 +17,7 @@ const WELCOME: BriefConsultMessage = {
   id: "welcome",
   role: "assistant",
   content:
-    "体調のこと、なんでも話しかけてください。短くお返事します。つらいときは設定の相談窓口も見てね。",
+    "体調のこと、なんでも話しかけてください。内容に合わせてトレーニングや相談窓口もご案内します。",
   createdAt: "",
 };
 
@@ -85,7 +86,7 @@ export default function BriefConsultCard({ moodKey }: Props) {
   };
 
   return (
-    <div className="bg-card rounded-3xl shadow-sm overflow-hidden flex flex-col h-[340px]">
+    <div className="bg-card rounded-3xl shadow-sm overflow-hidden flex flex-col h-[360px]">
       <div className="flex-shrink-0 px-4 py-3 border-b border-stroke bg-card flex items-center justify-between gap-2">
         <p className="text-[15px] font-bold text-t1">体調相談</p>
         {remaining !== null ? (
@@ -102,6 +103,7 @@ export default function BriefConsultCard({ moodKey }: Props) {
       >
         {messages.map((m) => {
           const isUser = m.role === "user";
+          const suggestion = m.suggestion;
           return (
             <div
               key={m.id}
@@ -117,14 +119,25 @@ export default function BriefConsultCard({ moodKey }: Props) {
                   />
                 </div>
               )}
-              <div
-                className={`max-w-[78%] px-3.5 py-2.5 text-[13px] leading-relaxed shadow-sm ${
-                  isUser
-                    ? "rounded-2xl rounded-br-md bg-accent text-white"
-                    : "rounded-2xl rounded-bl-md bg-white text-t1"
-                }`}
-              >
-                {m.content}
+              <div className="max-w-[78%] flex flex-col gap-1.5">
+                <div
+                  className={`px-3.5 py-2.5 text-[13px] leading-relaxed shadow-sm ${
+                    isUser
+                      ? "rounded-2xl rounded-br-md bg-accent text-white"
+                      : "rounded-2xl rounded-bl-md bg-white text-t1"
+                  }`}
+                >
+                  {m.content}
+                </div>
+                {!isUser && suggestion ? (
+                  <Link
+                    href={suggestion.href}
+                    className="inline-flex items-center gap-1 self-start rounded-full bg-accent-lt px-3 py-1.5 text-[12px] font-bold text-accent"
+                  >
+                    {suggestion.label}
+                    <ArrowRight size={13} />
+                  </Link>
+                ) : null}
               </div>
             </div>
           );
