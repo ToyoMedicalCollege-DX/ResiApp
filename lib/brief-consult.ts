@@ -1,9 +1,6 @@
 /**
- * 体調相談。ChatGPT 接続前でもメッセージを consult_* に保存する。
+ * 体調相談クライアント。返信生成は /api/consult/chat（gpt-4o-mini）側。
  */
-
-import { createClient } from "@/lib/supabase/client";
-import type { MoodKey } from "@/lib/condition-storage";
 
 export type BriefConsultMessage = {
   id: string;
@@ -16,85 +13,38 @@ export type BriefConsultReply = {
   ok: boolean;
   message?: BriefConsultMessage;
   error?: string;
+  limitReached?: boolean;
+  usedToday?: number;
+  dailyLimit?: number;
+  remaining?: number;
 };
 
-const PLACEHOLDER_REPLY =
-  "体調相談は準備中です。まもなく ChatGPT と連携予定です。つらいときは設定の相談窓口も利用できます。";
+export type ConsultQuota = {
+  usedToday: number;
+  dailyLimit: number;
+  remaining: number;
+};
 
-async function ensureOpenThread(
-  userId: string,
-  moodKey?: string | null
-): Promise<string | null> {
-  const supabase = createClient();
-  const { data: existing } = await supabase
-    .from("consult_threads")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("status", "open")
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (existing?.id) return existing.id as string;
-
-  const mood =
-    moodKey === "great" ||
-    moodKey === "good" ||
-    moodKey === "okay" ||
-    moodKey === "bad" ||
-    moodKey === "rough"
-      ? (moodKey as MoodKey)
-      : null;
-
-  const { data: created, error } = await supabase
-    .from("consult_threads")
-    .insert({
-      user_id: userId,
-      status: "open",
-      mood_at_start: mood,
-    })
-    .select("id")
-    .single();
-
-  if (error || !created) {
-    console.warn("consult_threads insert:", error?.message);
+export async function fetchConsultQuota(): Promise<ConsultQuota | null> {
+  try {
+    const res = await fetch("/api/consult/chat", {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as ConsultQuota;
+    return {
+      usedToday: body.usedToday ?? 0,
+      dailyLimit: body.dailyLimit ?? 5,
+      remaining: body.remaining ?? 0,
+    };
+  } catch {
     return null;
   }
-  return created.id as string;
 }
 
-async function insertMessage(input: {
-  threadId: string;
-  userId: string;
-  role: "user" | "assistant" | "system";
-  content: string;
-}): Promise<string | null> {
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("consult_messages")
-    .insert({
-      thread_id: input.threadId,
-      user_id: input.userId,
-      role: input.role,
-      content: input.content,
-    })
-    .select("id")
-    .single();
-
-  if (error) {
-    console.warn("consult_messages insert:", error.message);
-    return null;
-  }
-
-  await supabase
-    .from("consult_threads")
-    .update({ updated_at: new Date().toISOString() })
-    .eq("id", input.threadId);
-
-  return data?.id ?? null;
-}
-
-/** ユーザー発言を保存し、プレースホルダ返信を返す（将来 OpenAI に差し替え） */
+/** ユーザー発言を送り、AI返信を返す */
 export async function sendBriefConsult(
   text: string,
   context?: { moodKey?: string | null }
@@ -105,53 +55,39 @@ export async function sendBriefConsult(
   }
 
   try {
-    const supabase = createClient();
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError) throw userError;
-    const user = userData.user;
+    const res = await fetch("/api/consult/chat", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: trimmed,
+        moodKey: context?.moodKey ?? null,
+      }),
+    });
+    const body = (await res.json()) as BriefConsultReply & { error?: string };
 
-    if (user) {
-      const threadId = await ensureOpenThread(user.id, context?.moodKey);
-      if (threadId) {
-        await insertMessage({
-          threadId,
-          userId: user.id,
-          role: "user",
-          content: trimmed,
-        });
-        await insertMessage({
-          threadId,
-          userId: user.id,
-          role: "assistant",
-          content: PLACEHOLDER_REPLY,
-        });
-        const { trackAppEvent } = await import("@/lib/app-events");
-        void trackAppEvent("consult_send", {
-          moodKey: context?.moodKey ?? null,
-        });
-      }
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: body.error || "相談に失敗しました",
+        limitReached: body.limitReached || res.status === 429,
+        usedToday: body.usedToday,
+        dailyLimit: body.dailyLimit,
+        remaining: body.remaining ?? 0,
+      };
     }
 
     return {
       ok: true,
-      message: {
-        id: `a-${Date.now()}`,
-        role: "assistant",
-        content: PLACEHOLDER_REPLY,
-        createdAt: new Date().toISOString(),
-      },
+      message: body.message,
+      usedToday: body.usedToday,
+      dailyLimit: body.dailyLimit,
+      remaining: body.remaining,
     };
   } catch (e) {
-    console.warn("sendBriefConsult failed", e);
     return {
-      ok: true,
-      message: {
-        id: `a-${Date.now()}`,
-        role: "assistant",
-        content: PLACEHOLDER_REPLY,
-        createdAt: new Date().toISOString(),
-      },
-      error: e instanceof Error ? e.message : undefined,
+      ok: false,
+      error: e instanceof Error ? e.message : "通信エラーが発生しました",
     };
   }
 }

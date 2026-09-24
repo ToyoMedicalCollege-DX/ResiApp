@@ -40,7 +40,7 @@
 | 7 | `lesson_completions` | 必須 | レッスン完了（未は行なし） |
 | 8 | `user_preferences` | 必須 | 天気表示地域など |
 | 9 | `support_link_clicks` | 必須 | 相談窓口リンクのクリック |
-| 10 | `weather_snapshots` | 任意 | 気圧・天気の要約キャッシュ |
+| 10 | ~~`weather_snapshots`~~ | ~~廃止~~ | 天気は現在表示のみ（履歴テーブルなし） |
 | 11 | `work_answers` | 推奨 | トレーニング内ワーク入力 |
 | 12 | `user_badges` | 推奨 | 成長・達成バッジ |
 | 13 | `monthly_score_snapshots` | 任意 | 月次総合スコアの確定値 |
@@ -66,9 +66,9 @@ auth.users ──1:1── profiles
                 ├──< monthly_score_snapshots
                 ├──  user_preferences (1:1)
                 └──  notification_settings (1:1)
-
-weather_snapshots <──（任意）── condition_logs
 ```
+
+> **更新（2026-09-24）：** `weather_snapshots` と `condition_logs.weather_snapshot_id` を削除。天気はホームの現在表示のみ（端末キャッシュ可）。
 
 ---
 
@@ -105,7 +105,7 @@ CREATE TABLE public.condition_logs (
   pressure_alert  TEXT
                     CHECK (pressure_alert IS NULL
                       OR pressure_alert IN ('normal','mild','caution')),
-  weather_snapshot_id UUID REFERENCES public.weather_snapshots(id) ON DELETE SET NULL,
+  -- weather_snapshot_id は廃止（2026-09-24）
   note            TEXT NOT NULL DEFAULT '',
   body_tags       TEXT[] NOT NULL DEFAULT '{}',
   logged_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -254,9 +254,9 @@ CREATE TABLE public.notification_settings (
 **関連（採用）**
 - `condition_logs.note` / `body_tags` … 体調メモ・タグ
 - `app_events` … 操作ログ
-- `weather_snapshots` … 天気取得時に保存
 - `monthly_score_snapshots` … チェック完了時に月次確定
 - `user_badges` … 初回チェック／レッスン等で付与
+- ~~`weather_snapshots`~~ … 廃止（天気は現在表示のみ）
 
 ---
 
@@ -327,8 +327,8 @@ CREATE INDEX idx_support_clicks_user_time
 #### `user_badges`
 初回チェック・連続利用など。成長画面のモチベーション用。
 
-#### `weather_snapshots`
-地域×取得時刻の要約。`condition_logs.pressure_alert` の根拠を残す。
+#### ~~`weather_snapshots`~~（廃止）
+天気は現在表示のみ。履歴テーブルは持たない（`20260924_drop_weather_snapshots.sql`）。
 
 #### `app_events`（任意・軽量分析）
 ```sql
@@ -343,7 +343,7 @@ user_id, event_name, props JSONB, created_at
 | 成長で見たいこと | 元データ | 追加が必要か |
 |------------------|----------|--------------|
 | 気分の推移 | `condition_logs` | 不要 |
-| 気圧注意日との重なり | `condition_logs.pressure_alert` | 任意で snapshot 紐付け |
+| 気圧注意日との重なり | —（天気振り返り廃止） | 不要 |
 | チェック総合・各尺度推移 | `check_sessions` / snapshots | 月次確定なら snapshot |
 | 学科キャラ帯（良好/普通/注意） | 総合スコア＋`profiles.department` | 不要（アプリ計算） |
 | トレーニング進捗 | `lesson_completions` | 不要 |
@@ -398,7 +398,7 @@ CREATE INDEX idx_support_clicks_link_time ON support_link_clicks (link_key, clic
 | P0 | `condition_logs`, `check_sessions`（**含 crisis**）, `check_answers`, `lesson_completions`, `user_preferences` |
 | P0' | `notification_settings` テーブル作成（UI・プッシュ接続は後続） |
 | P1 | `consult_*`, `support_link_clicks` |
-| P2 | `work_answers`, `user_badges`, `monthly_score_snapshots`, `weather_snapshots` |
+| P2 | `work_answers`, `user_badges`, `monthly_score_snapshots` |
 | P3 | `app_events`, 同意ログ、プッシュ配信本体 |
 
 ---

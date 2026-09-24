@@ -368,7 +368,7 @@ export default function HomePage() {
       mood: selectedMood,
       bodyTags: [],
       note: "",
-      pressureAlert: weather?.pressureAlert ?? null,
+      pressureAlert: null,
     }).then(({ sync }) => {
       setHasTodayLog(true);
       setSavedFlash(true);

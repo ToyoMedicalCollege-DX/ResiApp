@@ -11,7 +11,6 @@ import {
   recentConditionSeries,
   type ConditionLog,
 } from "@/lib/condition-storage";
-import { pressureAlertCopy, type PressureAlert } from "@/lib/weather";
 import {
   loadCheckScoreHistory,
   loadLatestCheckScores,
@@ -180,13 +179,6 @@ export default function GrowthPage() {
   }, []);
 
   const logged = conditionSeries.filter((s) => s.log);
-  const cautionOverlap = logged.filter(
-    (s) =>
-      s.log &&
-      (s.log.pressureAlert === "caution" || s.log.pressureAlert === "mild") &&
-      (s.log.bodyTags.includes("headache") ||
-        s.log.bodyTags.includes("fatigue"))
-  );
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-bg">
@@ -361,12 +353,6 @@ export default function GrowthPage() {
                 {conditionSeries.map(({ date, log }) => {
                   const score = log?.moodScore ?? 0;
                   const h = score > 0 ? 12 + score * 14 : 8;
-                  const alert = log?.pressureAlert as
-                    | PressureAlert
-                    | null
-                    | undefined;
-                  const alertMark =
-                    alert === "caution" || alert === "mild";
                   return (
                     <div
                       key={date}
@@ -385,10 +371,7 @@ export default function GrowthPage() {
                           }}
                         />
                       </div>
-                      <span
-                        className="text-[9px] font-semibold leading-none"
-                        style={{ color: alertMark ? "#C45C2A" : "#A89080" }}
-                      >
+                      <span className="text-[9px] font-semibold leading-none text-t3">
                         {formatShortDate(date).split("/")[1]}
                       </span>
                     </div>
@@ -397,7 +380,7 @@ export default function GrowthPage() {
               </div>
 
               <p className="text-[11px] text-t3 leading-snug">
-                棒の高さ＝気分（高いほど良い）。日付がオレンジの日は気圧注意日です。
+                棒の高さ＝気分（高いほど良い）
               </p>
 
               {logged.length === 0 ? (
@@ -412,11 +395,6 @@ export default function GrowthPage() {
                     .map(({ date, log }) => {
                       if (!log) return null;
                       const tags = tagLabels(log);
-                      const alert = log.pressureAlert;
-                      const alertLabel =
-                        alert && alert !== "normal"
-                          ? pressureAlertCopy(alert).title
-                          : null;
                       return (
                         <div
                           key={date}
@@ -441,27 +419,9 @@ export default function GrowthPage() {
                           {log.note ? (
                             <p className="text-[11px] text-t3">{log.note}</p>
                           ) : null}
-                          {alertLabel ? (
-                            <p className="text-[11px] font-semibold text-accent">
-                              {alertLabel}
-                            </p>
-                          ) : null}
                         </div>
                       );
                     })}
-                </div>
-              )}
-
-              {cautionOverlap.length > 0 && (
-                <div className="rounded-2xl bg-accent-lt px-3 py-2.5">
-                  <p className="text-[12px] font-bold text-accent">
-                    振り返りヒント
-                  </p>
-                  <p className="text-[12px] text-t2 mt-0.5 leading-snug">
-                    気圧注意の日に頭痛・だるさを付けた記録が{" "}
-                    {cautionOverlap.length}{" "}
-                    日あります。無理のサインかも。
-                  </p>
                 </div>
               )}
             </div>

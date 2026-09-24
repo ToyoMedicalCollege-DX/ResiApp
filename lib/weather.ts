@@ -554,47 +554,8 @@ function loadCache(): WeatherSnapshot | null {
 
 function saveCache(snapshot: WeatherSnapshot): void {
   if (!canUseStorage()) return;
+  // 現在天気の短い端末キャッシュのみ（DB への履歴保存はしない）
   localStorage.setItem(CACHE_KEY, JSON.stringify(snapshot));
-  void syncWeatherSnapshotToSupabase(snapshot);
-}
-
-/** 天気要約を weather_snapshots に保存 */
-export async function syncWeatherSnapshotToSupabase(
-  snapshot: WeatherSnapshot
-): Promise<string | null> {
-  try {
-    const supabase = createClient();
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return null;
-
-    const { data, error } = await supabase
-      .from("weather_snapshots")
-      .insert({
-        region_key: snapshot.regionKey,
-        fetched_at: snapshot.fetchedAt,
-        pressure_hpa: snapshot.pressureHpa,
-        weather_code: snapshot.weatherCode,
-        summary: `${snapshot.weatherLabel} ${snapshot.temperatureC}℃`,
-        pressure_alert: snapshot.pressureAlert,
-        raw: {
-          humidityPct: snapshot.humidityPct,
-          pressureDeltaHpa: snapshot.pressureDeltaHpa,
-          regionLabel: snapshot.regionLabel,
-          source: snapshot.source,
-        },
-      })
-      .select("id")
-      .single();
-
-    if (error) {
-      console.warn("weather_snapshots insert:", error.message);
-      return null;
-    }
-    return data?.id ?? null;
-  } catch (e) {
-    console.warn("weather_snapshots sync failed", e);
-    return null;
-  }
 }
 
 type OpenMeteoResponse = {
