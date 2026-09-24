@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { encryptProfileName } from "@/lib/crypto/profile-name";
+import {
+  encryptProfileName,
+  isEncryptedProfileName,
+} from "@/lib/crypto/profile-name";
 import {
   isValidStudentId,
   normalizeStudentId,
   studentIdToEmail,
 } from "@/lib/student-auth";
 import { isDepartment } from "@/lib/departments";
+
+export const runtime = "nodejs";
 
 function mapSignUpError(message: string): string {
   const m = message.toLowerCase();
@@ -63,6 +68,12 @@ export async function POST(request: Request) {
     const studentId = normalizeStudentId(studentIdRaw);
     const email = studentIdToEmail(studentId);
     const nameCipher = encryptProfileName(trimmedName);
+    if (!isEncryptedProfileName(nameCipher)) {
+      return NextResponse.json(
+        { error: "名前の暗号化に失敗しました" },
+        { status: 500 }
+      );
+    }
 
     const admin = createAdminClient();
     const { data, error } = await admin.auth.admin.createUser({
@@ -70,7 +81,6 @@ export async function POST(request: Request) {
       password,
       email_confirm: true,
       user_metadata: {
-        // 平文は保存しない（AES-GCM 暗号文のみ）
         name: nameCipher,
         nickname: nameCipher,
         name_encrypted: true,
@@ -86,30 +96,49 @@ export async function POST(request: Request) {
       );
     }
 
-    // トリガー漏れ時の保険：profiles を暗号化名で upsert
-    if (data.user?.id) {
-      const { error: profileError } = await admin.from("profiles").upsert(
-        {
-          id: data.user.id,
-          student_id: studentId,
-          name: nameCipher,
-          department: trimmedDept,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "id" }
+    const userId = data.user?.id;
+    if (!userId) {
+      return NextResponse.json(
+        { error: "ユーザー作成に失敗しました" },
+        { status: 500 }
       );
-      if (profileError) {
-        console.warn("profiles upsert after signup:", profileError.message);
-        // Auth ユーザーは作成済みなのでクライアントへは成功扱いにしつつ、詳細を返す
-        return NextResponse.json({
-          ok: true,
-          email,
-          displayName: trimmedName,
-          department: trimmedDept,
-          studentId,
-          warning: `プロフィール保存に問題: ${profileError.message}`,
-        });
-      }
+    }
+
+    // トリガーより後に必ず暗号文で上書き（平文が残らないようにする）
+    const { error: profileError } = await admin.from("profiles").upsert(
+      {
+        id: userId,
+        student_id: studentId,
+        name: nameCipher,
+        department: trimmedDept,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "id" }
+    );
+    if (profileError) {
+      console.error("profiles upsert after signup:", profileError.message);
+      return NextResponse.json(
+        {
+          error: `アカウントは作れましたがプロフィール保存に失敗しました: ${profileError.message}`,
+        },
+        { status: 500 }
+      );
+    }
+
+    const { data: verify } = await admin
+      .from("profiles")
+      .select("name")
+      .eq("id", userId)
+      .maybeSingle();
+    if (!verify?.name || !isEncryptedProfileName(verify.name)) {
+      console.error("profile name not encrypted after signup", verify?.name);
+      return NextResponse.json(
+        {
+          error:
+            "名前の暗号化保存を確認できませんでした。管理者に連絡してください。",
+        },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({
@@ -118,6 +147,7 @@ export async function POST(request: Request) {
       displayName: trimmedName,
       department: trimmedDept,
       studentId,
+      nameEncrypted: true,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "登録に失敗しました";

@@ -8,6 +8,8 @@ import {
 import { isDepartment } from "@/lib/departments";
 import { studentIdFromUser } from "@/lib/auth-display";
 
+export const runtime = "nodejs";
+
 /** ログイン中ユーザー自身のプロフィール（名前は復号して返す） */
 export async function GET() {
   try {
