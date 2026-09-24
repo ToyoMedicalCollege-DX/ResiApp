@@ -139,6 +139,23 @@ export async function POST(request: Request) {
     }
 
     const admin = createAdminClient();
+
+    // 本登録済み（profiles に同一学籍番号）は再登録不可
+    const { data: existingByStudentId } = await admin
+      .from("profiles")
+      .select("id")
+      .eq("student_id", studentId)
+      .maybeSingle();
+    if (existingByStudentId) {
+      return NextResponse.json(
+        {
+          error:
+            "この学籍番号はすでに登録されています。別の学籍番号で登録するか、管理者に削除を依頼してください。",
+        },
+        { status: 400 }
+      );
+    }
+
     const meta = {
       name: nameCipher,
       nickname: nameCipher,
