@@ -23,7 +23,7 @@ export async function logSupportLinkClick(
       href: input.href,
       group_name: input.groupName,
       path:
-        typeof window !== "undefined" ? window.location.pathname : "/settings",
+        typeof window !== "undefined" ? window.location.pathname : "/support",
       user_agent:
         typeof navigator !== "undefined" ? navigator.userAgent : null,
     });

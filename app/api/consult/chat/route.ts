@@ -219,7 +219,7 @@ export async function POST(request: Request) {
     if (usedToday >= DAILY_LIMIT) {
       return NextResponse.json(
         {
-          error: `本日の相談上限（${DAILY_LIMIT}回）に達しました。また明日お話ししましょう。つらいときは設定の相談窓口も利用できます。`,
+          error: `本日の相談上限（${DAILY_LIMIT}回）に達しました。また明日お話ししましょう。つらいときはサポートの相談窓口も利用できます。`,
           limitReached: true,
           usedToday,
           dailyLimit: DAILY_LIMIT,

@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, Activity, BookOpen, TrendingUp } from "lucide-react";
+import { Home, Activity, BookOpen, TrendingUp, LifeBuoy } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -9,6 +9,7 @@ const TABS = [
   { href: "/check", label: "チェック", icon: Activity },
   { href: "/training", label: "トレーニング", icon: BookOpen },
   { href: "/growth", label: "成長記録", icon: TrendingUp },
+  { href: "/support", label: "サポート", icon: LifeBuoy },
 ];
 
 export default function TabBar() {

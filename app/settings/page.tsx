@@ -6,7 +6,6 @@ import {
   ChevronLeft,
   ChevronRight,
   User,
-  Phone,
   LogOut,
   Info,
   BookOpen,
@@ -37,7 +36,6 @@ import {
   saveNotificationSettings,
   type NotificationSettings,
 } from "@/lib/notification-settings";
-import { logSupportLinkClick } from "@/lib/support-clicks";
 import { fetchDecryptedProfile } from "@/lib/profile-client";
 
 const PROFILE_KEY = "resiapp.settings.profile";
@@ -51,63 +49,6 @@ const DEFAULT_PROFILE: ProfileDraft = {
   name: "",
   department: "",
 };
-
-const CONSULTATION = [
-  {
-    name: "スチューデントサービスセンター",
-    items: [
-      {
-        label: "スマホで予約",
-        value: "www.jtsc-ssc.com/yoyaku/so.php",
-        href: "https://www.jtsc-ssc.com/yoyaku/so.php",
-        note: "24時間受付（受信後返信）",
-      },
-      {
-        label: "電話で予約",
-        value: "06-6152-5638",
-        href: "tel:0661525638",
-        note: "受付時間：月〜金 10:00〜17:00",
-      },
-      {
-        label: "HPで予約",
-        value: "www.jtsc-ssc.com",
-        href: "https://www.jtsc-ssc.com",
-        note: "24時間受付（受信後返信）",
-      },
-    ],
-  },
-  {
-    name: "慶生会クリニック",
-    items: [
-      {
-        label: "電話",
-        value: "06-6533-8118",
-        href: "tel:0665338118",
-        note: "健康や病気に関すること",
-      },
-    ],
-  },
-  {
-    name: "寮生活に関すること",
-    items: [
-      {
-        label: "電話",
-        value: "06-6245-6781",
-        href: "tel:0662456781",
-      },
-    ],
-  },
-  {
-    name: "教務部 / 事務局",
-    items: [
-      {
-        label: "電話",
-        value: "06-6398-2255",
-        href: "tel:0663982255",
-      },
-    ],
-  },
-];
 
 function stripSan(name: string): string {
   return name.replace(/さん$/, "").trim();
@@ -223,16 +164,6 @@ export default function SettingsPage() {
       }
       setProfileReady(true);
     })();
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (window.location.hash !== "#support") return;
-    const el = document.getElementById("support");
-    if (!el) return;
-    window.setTimeout(() => {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 50);
   }, []);
 
   const handleSaveProfile = async () => {
@@ -558,97 +489,6 @@ export default function SettingsPage() {
                   {notifHint || "通知設定を保存しました"}
                 </p>
               )}
-            </div>
-          </section>
-
-          <section id="support" className="flex flex-col gap-2 scroll-mt-4">
-            <h2 className="text-[12px] font-bold text-t3 px-1">サポート</h2>
-            <div className="bg-card rounded-3xl overflow-hidden shadow-sm">
-              <div className="px-4 py-3.5 flex items-center gap-3 border-b border-stroke">
-                <div className="w-10 h-10 rounded-xl bg-[#FEF3C7] flex items-center justify-center flex-shrink-0">
-                  <Phone size={20} color="#D97706" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[14px] font-semibold text-t1">相談窓口</p>
-                  <p className="text-[12px] text-t3">
-                    つらいときはひとりで抱えなくて大丈夫です
-                  </p>
-                </div>
-              </div>
-
-              <div className="divide-y divide-stroke">
-                {CONSULTATION.map((group) => (
-                  <div key={group.name} className="px-4 py-4 flex flex-col gap-3">
-                    <p className="text-[14px] font-bold text-t1">{group.name}</p>
-                    <div className="flex flex-col gap-2.5">
-                      {group.items.map((item) => {
-                        const content = (
-                          <>
-                            <div className="min-w-0">
-                              <p className="text-[11px] font-semibold text-t3">
-                                {item.label}
-                              </p>
-                              <p className="text-[14px] font-bold text-accent break-all mt-0.5">
-                                {item.value}
-                              </p>
-                              {"note" in item && item.note ? (
-                                <p className="text-[11px] text-t3 mt-0.5">
-                                  {item.note}
-                                </p>
-                              ) : null}
-                            </div>
-                            {"href" in item && item.href ? (
-                              <ChevronRight
-                                size={16}
-                                className="text-t3 flex-shrink-0 mt-1"
-                              />
-                            ) : null}
-                          </>
-                        );
-
-                        if ("href" in item && item.href) {
-                          const external = item.href.startsWith("http");
-                          const linkKey = `${group.name}-${item.label}`
-                            .replace(/\s+/g, "_")
-                            .toLowerCase();
-                          return (
-                            <a
-                              key={`${group.name}-${item.label}`}
-                              href={item.href}
-                              {...(external
-                                ? {
-                                    target: "_blank",
-                                    rel: "noopener noreferrer",
-                                  }
-                                : {})}
-                              onClick={() => {
-                                void logSupportLinkClick({
-                                  linkKey,
-                                  linkLabel: item.label,
-                                  href: item.href!,
-                                  groupName: group.name,
-                                });
-                              }}
-                              className="rounded-2xl bg-bg px-3 py-2.5 flex items-start justify-between gap-2"
-                            >
-                              {content}
-                            </a>
-                          );
-                        }
-
-                        return (
-                          <div
-                            key={`${group.name}-${item.label}`}
-                            className="rounded-2xl bg-bg px-3 py-2.5"
-                          >
-                            {content}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
           </section>
 

@@ -114,7 +114,7 @@ export default function AboutPage() {
 
           {/* サポートへの導線 */}
           <Link
-            href="/settings#support"
+            href="/support"
             className="bg-card rounded-3xl p-4 shadow-sm flex items-center gap-3 active:opacity-80"
           >
             <div className="w-10 h-10 rounded-xl bg-[#FEF3C7] flex items-center justify-center flex-shrink-0">
@@ -123,7 +123,7 @@ export default function AboutPage() {
             <div className="flex-1 min-w-0">
               <p className="text-[14px] font-bold text-t1">サポートの連絡先</p>
               <p className="text-[12px] text-t3 mt-0.5">
-                設定内の相談窓口一覧へ移動します
+                相談窓口一覧へ移動します
               </p>
             </div>
             <ChevronRight size={18} className="text-t3 flex-shrink-0" />

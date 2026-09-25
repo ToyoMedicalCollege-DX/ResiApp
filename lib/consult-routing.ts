@@ -33,7 +33,7 @@ export const CONSULT_ROUTES: Record<
   },
   support: {
     label: "相談窓口（サポートセンター）へ",
-    href: "/settings#support",
+    href: "/support",
     when: "一人では抱えきれない・危険・限界・誰かに相談したい・深刻なつらさ",
   },
 };

@@ -125,7 +125,7 @@ function CheckQuestionContent() {
               ひとりで抱えなくて大丈夫です。必要ならサポートの連絡先を確認してください。
             </p>
             <Link
-              href="/settings#support"
+              href="/support"
               className="w-full flex items-center justify-center h-[44px] rounded-[22px] border-2 border-[#DC2626] bg-white text-[#111827] text-[13px] font-bold"
             >
               サポートの連絡先を見る

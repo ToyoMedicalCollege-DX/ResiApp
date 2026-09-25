@@ -47,6 +47,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/check") ||
     pathname.startsWith("/training") ||
     pathname.startsWith("/growth") ||
+    pathname.startsWith("/support") ||
     pathname.startsWith("/settings");
 
   if (!user && isProtected) {
