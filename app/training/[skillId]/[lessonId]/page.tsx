@@ -36,7 +36,12 @@ export default function LessonDetailPage({
 }) {
   const { skillId, lessonId } = use(params);
   const router = useRouter();
-  const [completed, setCompleted] = useState(false);
+  /** 今回の受講セッションが終わったか（完了画面表示用）。過去クリアではブロックしない */
+  const [sessionDone, setSessionDone] = useState(false);
+  /** 以前にクリア済みか（再受講時も進捗は維持） */
+  const [wasCleared, setWasCleared] = useState(false);
+  const [playerKey, setPlayerKey] = useState(0);
+  const [ready, setReady] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "ok" | "error">(
     "idle"
   );
@@ -48,16 +53,22 @@ export default function LessonDetailPage({
   const slides = SLIDES_MAP[skillId]?.[lessonId];
 
   useEffect(() => {
+    setSessionDone(false);
+    setReady(false);
     void loadLessonCompletions().then((map) => {
       if (isLessonCompleted(map, lessonId)) {
-        setCompleted(true);
+        setWasCleared(true);
         setSaveStatus("ok");
+      } else {
+        setWasCleared(false);
       }
+      setReady(true);
     });
   }, [lessonId]);
 
   const handleComplete = () => {
-    setCompleted(true);
+    setSessionDone(true);
+    setWasCleared(true);
     setSaveStatus("saving");
     setSaveError("");
     void markLessonCompleted(skillId as SkillId, lessonId).then((result) => {
@@ -69,6 +80,11 @@ export default function LessonDetailPage({
     });
   };
 
+  const handleReplay = () => {
+    setSessionDone(false);
+    setPlayerKey((k) => k + 1);
+  };
+
   if (!skill)
     return (
       <div className="h-full flex items-center justify-center text-t2">
@@ -76,7 +92,15 @@ export default function LessonDetailPage({
       </div>
     );
 
-  if (completed) {
+  if (!ready) {
+    return (
+      <div className="h-full flex items-center justify-center text-t3 text-[13px] bg-bg">
+        読み込み中…
+      </div>
+    );
+  }
+
+  if (sessionDone) {
     return (
       <div className="h-full flex flex-col items-center justify-center px-8 gap-6 bg-bg">
         <div
@@ -86,11 +110,17 @@ export default function LessonDetailPage({
           <CheckCircle size={48} color={skill.color} />
         </div>
         <div className="flex flex-col items-center gap-2 text-center">
+          <p
+            className="text-[12px] font-bold px-3 py-1 rounded-full"
+            style={{ backgroundColor: `${skill.color}18`, color: skill.color }}
+          >
+            クリア済み
+          </p>
           <h2 className="text-[24px] font-bold text-t1">よく頑張ったね！</h2>
           <p className="text-[14px] text-t2 leading-relaxed">
-            今日もレッスンを完了しました。
+            レッスンを完了しました。
             <br />
-            この調子で続けていこう！
+            いつでももう一度開けます。
           </p>
           {saveStatus === "saving" && (
             <p className="text-[12px] font-semibold text-t3">進捗を保存しています…</p>
@@ -105,19 +135,26 @@ export default function LessonDetailPage({
           )}
         </div>
         <div className="flex flex-col gap-3 w-full">
-          <Link
-            href="/home"
+          <button
+            type="button"
+            onClick={handleReplay}
             className="flex items-center justify-center h-[54px] rounded-[27px] text-white font-bold text-[15px]"
             style={{ backgroundColor: skill.color }}
           >
-            ホームに戻る
-          </Link>
+            もう一度やる
+          </button>
           <Link
             href={`/training/${skillId}`}
             className="flex items-center justify-center h-[54px] rounded-[27px] border-2 font-bold text-[15px]"
             style={{ borderColor: skill.color, color: skill.color }}
           >
-            次のレッスンを見る
+            レッスン一覧に戻る
+          </Link>
+          <Link
+            href="/home"
+            className="flex items-center justify-center h-11 text-[13px] font-semibold text-t2"
+          >
+            ホームに戻る
           </Link>
         </div>
       </div>
@@ -126,14 +163,28 @@ export default function LessonDetailPage({
 
   if (slides && slides.length > 0) {
     return (
-      <LessonSlidePlayer
-        slides={slides}
-        skill={skill}
-        lessonId={lessonId}
-        lessonTitle={lesson.title}
-        onComplete={handleComplete}
-        onBack={() => router.push(`/training/${skillId}`)}
-      />
+      <div className="h-full flex flex-col bg-bg">
+        {wasCleared ? (
+          <div
+            className="flex-shrink-0 flex items-center justify-center gap-1.5 py-2 text-[12px] font-bold"
+            style={{ backgroundColor: `${skill.color}14`, color: skill.color }}
+          >
+            <CheckCircle size={14} />
+            クリア済み・もう一度受講できます
+          </div>
+        ) : null}
+        <div className="flex-1 min-h-0">
+          <LessonSlidePlayer
+            key={playerKey}
+            slides={slides}
+            skill={skill}
+            lessonId={lessonId}
+            lessonTitle={lesson.title}
+            onComplete={handleComplete}
+            onBack={() => router.push(`/training/${skillId}`)}
+          />
+        </div>
+      </div>
     );
   }
 

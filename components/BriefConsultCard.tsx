@@ -4,44 +4,88 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Send } from "lucide-react";
 import {
+  CONSULT_WELCOME_TEXT,
+  fetchConsultHistory,
   fetchConsultQuota,
   sendBriefConsult,
   type BriefConsultMessage,
 } from "@/lib/brief-consult";
+import { jstDateKey } from "@/lib/consult-constants";
 
 type Props = {
   moodKey?: string | null;
 };
 
-const WELCOME: BriefConsultMessage = {
-  id: "welcome",
-  role: "assistant",
-  content:
-    "体調のこと、なんでも話しかけてください。内容に合わせてトレーニングや相談窓口もご案内します。",
-  createdAt: "",
-};
+function formatDayLabel(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    month: "numeric",
+    day: "numeric",
+    weekday: "short",
+  }).format(d);
+}
 
 export default function BriefConsultCard({ moodKey }: Props) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [messages, setMessages] = useState<BriefConsultMessage[]>([WELCOME]);
+  const [messages, setMessages] = useState<BriefConsultMessage[]>([]);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [dailyLimit, setDailyLimit] = useState(5);
+  const [historyReady, setHistoryReady] = useState(false);
+  const [historyError, setHistoryError] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
+  const shouldStickToBottom = useRef(true);
 
   useEffect(() => {
-    void fetchConsultQuota().then((q) => {
-      if (!q) return;
-      setRemaining(q.remaining);
-      setDailyLimit(q.dailyLimit);
-    });
+    void (async () => {
+      const [q, historyResult] = await Promise.all([
+        fetchConsultQuota(),
+        fetchConsultHistory(),
+      ]);
+      if (q) {
+        setRemaining(q.remaining);
+        setDailyLimit(q.dailyLimit);
+      }
+      if (historyResult.error) {
+        setHistoryError(historyResult.error);
+      }
+      if (historyResult.messages.length > 0) {
+        setMessages(historyResult.messages);
+      } else {
+        // 未ログイン等でサーバー挿入できない場合のフォールバック
+        setMessages([
+          {
+            id: "welcome-local",
+            role: "assistant",
+            content: CONSULT_WELCOME_TEXT,
+            createdAt: new Date().toISOString(),
+            isWelcome: true,
+          },
+        ]);
+      }
+      setHistoryReady(true);
+      shouldStickToBottom.current = true;
+    })();
   }, []);
 
   useEffect(() => {
     const el = listRef.current;
+    if (!el || !historyReady) return;
+    if (!shouldStickToBottom.current) return;
+    // レイアウト確定後に末尾へ
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+  }, [messages, sending, historyReady]);
+
+  const onListScroll = () => {
+    const el = listRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [messages, sending]);
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    shouldStickToBottom.current = distanceFromBottom < 80;
+  };
 
   const limitReached = remaining !== null && remaining <= 0;
 
@@ -55,6 +99,7 @@ export default function BriefConsultCard({ moodKey }: Props) {
       content: text,
       createdAt: new Date().toISOString(),
     };
+    shouldStickToBottom.current = true;
     setMessages((prev) => [...prev, userMsg]);
     setDraft("");
     setSending(true);
@@ -85,8 +130,10 @@ export default function BriefConsultCard({ moodKey }: Props) {
     setSending(false);
   };
 
+  let lastDayKey = "";
+
   return (
-    <div className="bg-card rounded-3xl shadow-sm overflow-hidden flex flex-col h-[360px]">
+    <div className="bg-card rounded-3xl shadow-sm overflow-hidden flex flex-col h-[380px]">
       <div className="flex-shrink-0 px-4 py-3 border-b border-stroke bg-card flex items-center justify-between gap-2">
         <p className="text-[15px] font-bold text-t1">体調相談</p>
         {remaining !== null ? (
@@ -98,46 +145,69 @@ export default function BriefConsultCard({ moodKey }: Props) {
 
       <div
         ref={listRef}
+        onScroll={onListScroll}
         className="flex-1 min-h-0 overflow-y-auto px-3 py-3 flex flex-col gap-2.5"
         style={{ backgroundColor: "#FFF8EE" }}
       >
+        {!historyReady ? (
+          <p className="text-[12px] text-t3 text-center py-4">
+            履歴を読み込み中…
+          </p>
+        ) : null}
+        {historyError ? (
+          <p className="text-[11px] text-[#C45C2A] text-center px-2">
+            {historyError}
+          </p>
+        ) : null}
         {messages.map((m) => {
           const isUser = m.role === "user";
           const suggestion = m.suggestion;
+          const dayKey = m.createdAt ? jstDateKey(m.createdAt) : "";
+          const showDay = Boolean(dayKey && dayKey !== lastDayKey);
+          if (dayKey) lastDayKey = dayKey;
+
           return (
-            <div
-              key={m.id}
-              className={`flex ${isUser ? "justify-end" : "justify-start"}`}
-            >
-              {!isUser && (
-                <div className="w-7 h-7 rounded-full bg-accent-lt overflow-hidden flex-shrink-0 mr-2 mt-0.5">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src="/icon-192.png?v=2"
-                    alt=""
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              )}
-              <div className="max-w-[78%] flex flex-col gap-1.5">
-                <div
-                  className={`px-3.5 py-2.5 text-[13px] leading-relaxed shadow-sm ${
-                    isUser
-                      ? "rounded-2xl rounded-br-md bg-accent text-white"
-                      : "rounded-2xl rounded-bl-md bg-white text-t1"
-                  }`}
-                >
-                  {m.content}
-                </div>
-                {!isUser && suggestion ? (
-                  <Link
-                    href={suggestion.href}
-                    className="inline-flex items-center gap-1 self-start rounded-full bg-accent-lt px-3 py-1.5 text-[12px] font-bold text-accent"
+            <div key={m.id} className="flex flex-col gap-2">
+              {showDay ? (
+                <p className="text-[10px] font-semibold text-t3 text-center py-1">
+                  {formatDayLabel(m.createdAt)}
+                </p>
+              ) : null}
+              <div
+                className={`flex ${isUser ? "justify-end" : "justify-start"}`}
+              >
+                {!isUser && (
+                  <div className="w-7 h-7 rounded-full bg-accent-lt overflow-hidden flex-shrink-0 mr-2 mt-0.5">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src="/icon-192.png?v=2"
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
+                <div className="max-w-[78%] flex flex-col gap-1.5">
+                  <div
+                    className={`px-3.5 py-2.5 text-[13px] leading-relaxed shadow-sm ${
+                      isUser
+                        ? "rounded-2xl rounded-br-md bg-accent text-white"
+                        : m.isWelcome
+                          ? "rounded-2xl rounded-bl-md bg-accent-lt text-t1"
+                          : "rounded-2xl rounded-bl-md bg-white text-t1"
+                    }`}
                   >
-                    {suggestion.label}
-                    <ArrowRight size={13} />
-                  </Link>
-                ) : null}
+                    {m.content}
+                  </div>
+                  {!isUser && suggestion ? (
+                    <Link
+                      href={suggestion.href}
+                      className="inline-flex items-center gap-1 self-start rounded-full bg-accent-lt px-3 py-1.5 text-[12px] font-bold text-accent"
+                    >
+                      {suggestion.label}
+                      <ArrowRight size={13} />
+                    </Link>
+                  ) : null}
+                </div>
               </div>
             </div>
           );

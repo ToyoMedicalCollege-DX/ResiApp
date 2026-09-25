@@ -5,24 +5,19 @@ import {
   suggestionFromKind,
   type ConsultSuggestion,
 } from "@/lib/consult-routing";
+import {
+  CONSULT_DAILY_LIMIT,
+  CONSULT_WELCOME_MODEL,
+  startOfTodayJstIso,
+} from "@/lib/consult-constants";
 
 export const runtime = "nodejs";
 
 const MODEL = "gpt-4o-mini";
 const MAX_TOKENS = 350;
-const DAILY_LIMIT = 5;
+const DAILY_LIMIT = CONSULT_DAILY_LIMIT;
 const HISTORY_LIMIT = 8;
 type MoodKey = "great" | "good" | "okay" | "bad" | "rough";
-
-function startOfTodayJstIso(): string {
-  const day = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  return new Date(`${day}T00:00:00+09:00`).toISOString();
-}
 
 function normalizeMood(raw: unknown): MoodKey | null {
   if (
@@ -238,19 +233,21 @@ export async function POST(request: Request) {
 
     const { data: recentRows } = await supabase
       .from("consult_messages")
-      .select("role, content")
+      .select("role, content, model")
       .eq("thread_id", threadId)
       .in("role", ["user", "assistant"])
       .order("created_at", { ascending: false })
-      .limit(HISTORY_LIMIT);
+      .limit(HISTORY_LIMIT + 4);
 
     const history = [...(recentRows ?? [])]
       .reverse()
+      .filter((row) => row.model !== CONSULT_WELCOME_MODEL)
       .map((row) => ({
         role: row.role as "user" | "assistant",
         content: String(row.content ?? ""),
       }))
-      .filter((m) => m.content);
+      .filter((m) => m.content)
+      .slice(-HISTORY_LIMIT);
 
     const { error: userInsertError } = await supabase
       .from("consult_messages")

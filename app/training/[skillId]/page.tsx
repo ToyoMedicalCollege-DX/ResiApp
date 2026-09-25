@@ -68,7 +68,7 @@ function LessonRow({
         >
           {lesson.title}
         </p>
-        <div className="flex items-center gap-1 mt-0.5">
+        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
           <TypeIcon size={11} color={isUnlocked ? themeColor : "#A89080"} />
           <span
             className="text-[11px]"
@@ -76,7 +76,15 @@ function LessonRow({
           >
             {config.label}
           </span>
-          <span className="text-[11px] text-t3 ml-1">{lesson.duration}分</span>
+          <span className="text-[11px] text-t3">{lesson.duration}分</span>
+          {completed ? (
+            <span
+              className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+              style={{ backgroundColor: `${themeColor}18`, color: themeColor }}
+            >
+              クリア済み
+            </span>
+          ) : null}
         </div>
       </div>
 
