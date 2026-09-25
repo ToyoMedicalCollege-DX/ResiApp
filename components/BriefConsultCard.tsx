@@ -180,7 +180,7 @@ export default function BriefConsultCard({ moodKey }: Props) {
                   <div className="w-7 h-7 rounded-full bg-accent-lt overflow-hidden flex-shrink-0 mr-2 mt-0.5">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src="/icon-192.png?v=2"
+                      src="/logo.jpg"
                       alt=""
                       className="w-full h-full object-cover"
                     />
@@ -217,7 +217,7 @@ export default function BriefConsultCard({ moodKey }: Props) {
             <div className="w-7 h-7 rounded-full bg-accent-lt overflow-hidden flex-shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/icon-192.png?v=2"
+                src="/logo.jpg"
                 alt=""
                 className="w-full h-full object-cover"
               />
